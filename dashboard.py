@@ -607,9 +607,12 @@ def create_fruit_weight_figure():
 # Metrics Testing Chart Functions
 def create_metrics_ripe_fruits_figure():
     """Ripe Fruits Per Meter - first data point per date, clickable to show all points for that day"""
+    # Create local copy to avoid modifying global dataframe
+    df_local = df_metrics.copy()
+    
     # Get first data point per date
-    df_metrics['Date'] = df_metrics['Start Datetime (local)'].dt.date
-    daily_first = df_metrics.groupby('Date').first().reset_index()
+    df_local['Date'] = df_local['Start Datetime (local)'].dt.date
+    daily_first = df_local.groupby('Date').first().reset_index()
     
     # Filter out zeros and NaN values
     daily_first = daily_first[daily_first['Ripe Fruits per meter'].notna()]
@@ -619,7 +622,7 @@ def create_metrics_ripe_fruits_figure():
     all_dates_data = []
     for idx, row in daily_first.iterrows():
         date = row['Date']
-        day_data = df_metrics[df_metrics['Date'] == date].copy()
+        day_data = df_local[df_local['Date'] == date].copy()
         
         # Get the branch for this first data point
         first_branch = row['Branch']
@@ -673,8 +676,9 @@ def create_metrics_ripe_fruits_figure():
 
 def create_metrics_recall_figure():
     """Recall with Questionable - first data point per date"""
-    df_metrics['Date'] = df_metrics['Start Datetime (local)'].dt.date
-    daily_first = df_metrics.groupby('Date').first().reset_index()
+    df_local = df_metrics.copy()
+    df_local['Date'] = df_local['Start Datetime (local)'].dt.date
+    daily_first = df_local.groupby('Date').first().reset_index()
     
     # Filter out zeros and NaN values
     daily_first = daily_first[daily_first['Recall w/ Questionable'].notna()]
@@ -683,7 +687,7 @@ def create_metrics_recall_figure():
     all_dates_data = []
     for idx, row in daily_first.iterrows():
         date = row['Date']
-        day_data = df_metrics[df_metrics['Date'] == date].copy()
+        day_data = df_local[df_local['Date'] == date].copy()
         
         first_branch = row['Branch']
         first_value = row['Recall w/ Questionable']
@@ -735,8 +739,9 @@ def create_metrics_recall_figure():
 
 def create_metrics_precision_figure():
     """Precision with Questionable - first data point per date"""
-    df_metrics['Date'] = df_metrics['Start Datetime (local)'].dt.date
-    daily_first = df_metrics.groupby('Date').first().reset_index()
+    df_local = df_metrics.copy()
+    df_local['Date'] = df_local['Start Datetime (local)'].dt.date
+    daily_first = df_local.groupby('Date').first().reset_index()
     
     # Filter out zeros and NaN values
     daily_first = daily_first[daily_first['Precision w/ Questionable'].notna()]
@@ -745,7 +750,7 @@ def create_metrics_precision_figure():
     all_dates_data = []
     for idx, row in daily_first.iterrows():
         date = row['Date']
-        day_data = df_metrics[df_metrics['Date'] == date].copy()
+        day_data = df_local[df_local['Date'] == date].copy()
         
         first_branch = row['Branch']
         first_value = row['Precision w/ Questionable']
@@ -797,8 +802,9 @@ def create_metrics_precision_figure():
 
 def create_metrics_harvest_speed_figure():
     """Real Harvest Speed - first data point per date"""
-    df_metrics['Date'] = df_metrics['Start Datetime (local)'].dt.date
-    daily_first = df_metrics.groupby('Date').first().reset_index()
+    df_local = df_metrics.copy()
+    df_local['Date'] = df_local['Start Datetime (local)'].dt.date
+    daily_first = df_local.groupby('Date').first().reset_index()
     
     # Filter out zeros and NaN values
     daily_first = daily_first[daily_first['Real Harvest Speed'].notna()]
@@ -807,7 +813,7 @@ def create_metrics_harvest_speed_figure():
     all_dates_data = []
     for idx, row in daily_first.iterrows():
         date = row['Date']
-        day_data = df_metrics[df_metrics['Date'] == date].copy()
+        day_data = df_local[df_local['Date'] == date].copy()
         
         first_branch = row['Branch']
         first_value = row['Real Harvest Speed']
@@ -859,8 +865,9 @@ def create_metrics_harvest_speed_figure():
 
 def create_metrics_drop_rate_figure():
     """Drop Rate - first data point per date"""
-    df_metrics['Date'] = df_metrics['Start Datetime (local)'].dt.date
-    daily_first = df_metrics.groupby('Date').first().reset_index()
+    df_local = df_metrics.copy()
+    df_local['Date'] = df_local['Start Datetime (local)'].dt.date
+    daily_first = df_local.groupby('Date').first().reset_index()
     
     # Filter out zeros and NaN values
     daily_first = daily_first[daily_first['Drop Rate'].notna()]
@@ -869,7 +876,7 @@ def create_metrics_drop_rate_figure():
     all_dates_data = []
     for idx, row in daily_first.iterrows():
         date = row['Date']
-        day_data = df_metrics[df_metrics['Date'] == date].copy()
+        day_data = df_local[df_local['Date'] == date].copy()
         
         first_branch = row['Branch']
         first_value = row['Drop Rate']
