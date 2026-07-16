@@ -227,15 +227,23 @@ app.layout = html.Div([
         })
     ], style={'background': COLORS['background'], 'padding': '0 40px'}),
     
-    # Tab content
-    html.Div(id='tabs-content'),
-    
-    # Loading spinner
+    # Tab content with loading overlay
     dcc.Loading(
         id="loading",
-        type="default",
+        type="circle",
         fullscreen=False,
-        children=html.Div(id="loading-output")
+        color=COLORS['primary'],
+        style={
+            'position': 'absolute',
+            'top': '50%',
+            'left': '50%',
+            'transform': 'translate(-50%, -50%)',
+            'zIndex': 9999
+        },
+        children=html.Div(id='tabs-content', style={
+            'minHeight': '600px',
+            'position': 'relative'
+        })
     ),
     
     # Footer
@@ -260,12 +268,12 @@ app.layout = html.Div([
 
 # Callback to render tab content
 @callback(
-    [Output('tabs-content', 'children'), Output('loading-output', 'children')],
+    Output('tabs-content', 'children'),
     Input('tabs', 'value')
 )
 def render_content(tab):
     if tab == 'tab-1':
-        content = html.Div([
+        return html.Div([
             # Chart 1: Ripe Fruits per Meter
             html.Div([
                 dcc.Graph(id='ripe-fruits-per-meter', figure=create_ripe_fruits_figure(), config={'displayModeBar': True, 'displaylogo': False})
@@ -314,11 +322,9 @@ def render_content(tab):
                 'border': f'1px solid {COLORS["border"]}'
             }),
         ], style={'padding': '32px 40px', 'maxWidth': '1400px', 'margin': '0 auto', 'background': COLORS['surface']})
-        
-        return content, ""
     
     elif tab == 'tab-2':
-        content = html.Div([
+        return html.Div([
             # Metrics Testing Charts
             html.Div([
                 dcc.Graph(id='metrics-ripe-fruits', figure=create_metrics_ripe_fruits_figure(), config={'displayModeBar': True, 'displaylogo': False})
@@ -375,8 +381,6 @@ def render_content(tab):
                 'border': f'1px solid {COLORS["border"]}'
             }),
         ], style={'padding': '32px 40px', 'maxWidth': '1400px', 'margin': '0 auto', 'background': COLORS['surface']})
-        
-        return content, ""
 
 # Create static figures with default 4-week view
 def create_ripe_fruits_figure():
