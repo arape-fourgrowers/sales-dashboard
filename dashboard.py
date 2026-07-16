@@ -869,7 +869,7 @@ def create_metrics_harvest_speed_figure():
     fig.update_layout(
         title={'text': 'Real Harvest Speed (Daily)', 'font': {'size': 18, 'color': COLORS['text'], 'family': 'system-ui'}},
         xaxis_title='',
-        yaxis_title='Speed (m/hr)',
+        yaxis_title='seconds/tomato',
         height=400,
         hovermode='closest',
         paper_bgcolor=COLORS['background'],
