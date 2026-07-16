@@ -625,41 +625,44 @@ def create_fruit_weight_figure():
 
 # Metrics Testing Chart Functions
 def create_metrics_ripe_fruits_figure():
-    """Ripe Fruits Per Meter - first data point per date, clickable to show all points for that day"""
+    """Ripe Fruits Per Meter - baseline runs per date, clickable to show all points for that day"""
     # Create local copy to avoid modifying global dataframe
     df_local = df_metrics.copy()
     
-    # Get first data point per date
+    # Get baseline run per date
     df_local['Date'] = df_local['Start Datetime (local)'].dt.date
-    daily_first = df_local.groupby('Date').first().reset_index()
+    df_baseline = df_local[df_local['Baseline Run'] == 'TRUE'].copy()
+    daily_baseline = df_baseline.groupby('Date').first().reset_index()
     
     # Filter out zeros and NaN values
-    daily_first = daily_first[daily_first['Ripe Fruits per meter'].notna()]
-    daily_first = daily_first[daily_first['Ripe Fruits per meter'] > 0]
+    daily_baseline = daily_baseline[daily_baseline['Ripe Fruits per meter'].notna()]
+    daily_baseline = daily_baseline[daily_baseline['Ripe Fruits per meter'] > 0]
     
     # Get all data for each date for hover info
     all_dates_data = []
-    for idx, row in daily_first.iterrows():
+    for idx, row in daily_baseline.iterrows():
         date = row['Date']
         day_data = df_local[df_local['Date'] == date].copy()
         
-        # Get the branch for this first data point
-        first_branch = row['Branch']
-        first_value = row['Ripe Fruits per meter']
+        # Get the branch for this baseline data point
+        baseline_branch = row['Branch']
+        baseline_value = row['Ripe Fruits per meter']
         
         # Get all other branches for this day with their values and percentage differences
         other_branches_info = []
         for _, other_row in day_data.iterrows():
+            if other_row['Baseline Run'] == 'TRUE':
+                continue
             other_branch = other_row['Branch']
             other_value = other_row['Ripe Fruits per meter']
             
             if pd.notna(other_value) and other_value > 0:
-                pct_change = ((other_value - first_value) / first_value * 100) if first_value != 0 else 0
+                pct_change = ((other_value - baseline_value) / baseline_value * 100) if baseline_value != 0 else 0
                 sign = '+' if pct_change >= 0 else ''
                 other_branches_info.append(f"{other_branch}: {other_value:.2f} ({sign}{pct_change:.1f}%)")
         
-        hover_text = f"<b>Branch: {first_branch}</b><br>"
-        hover_text += f"Value: {first_value:.2f}<br>"
+        hover_text = f"<b>Branch: {baseline_branch} (Baseline)</b><br>"
+        hover_text += f"Value: {baseline_value:.2f}<br>"
         hover_text += f"<br><b>Other branches this day:</b><br>"
         hover_text += "<br>".join(other_branches_info) if other_branches_info else "None"
         
@@ -668,8 +671,8 @@ def create_metrics_ripe_fruits_figure():
     fig = go.Figure()
     
     fig.add_trace(go.Scatter(
-        x=pd.to_datetime(daily_first['Date']),
-        y=daily_first['Ripe Fruits per meter'],
+        x=pd.to_datetime(daily_baseline['Date']),
+        y=daily_baseline['Ripe Fruits per meter'],
         mode='markers',
         marker=dict(size=10, color=COLORS['primary']),
         name='Daily First Reading',
@@ -694,35 +697,38 @@ def create_metrics_ripe_fruits_figure():
     return fig
 
 def create_metrics_recall_figure():
-    """Recall with Questionable - first data point per date"""
+    """Recall with Questionable - baseline run per date"""
     df_local = df_metrics.copy()
     df_local['Date'] = df_local['Start Datetime (local)'].dt.date
-    daily_first = df_local.groupby('Date').first().reset_index()
+    df_baseline = df_local[df_local['Baseline Run'] == 'TRUE'].copy()
+    daily_baseline = df_baseline.groupby('Date').first().reset_index()
     
     # Filter out zeros and NaN values
-    daily_first = daily_first[daily_first['Recall w/ Questionable'].notna()]
-    daily_first = daily_first[daily_first['Recall w/ Questionable'] > 0]
+    daily_baseline = daily_baseline[daily_baseline['Recall w/ Questionable'].notna()]
+    daily_baseline = daily_baseline[daily_baseline['Recall w/ Questionable'] > 0]
     
     all_dates_data = []
-    for idx, row in daily_first.iterrows():
+    for idx, row in daily_baseline.iterrows():
         date = row['Date']
         day_data = df_local[df_local['Date'] == date].copy()
         
-        first_branch = row['Branch']
-        first_value = row['Recall w/ Questionable']
+        baseline_branch = row['Branch']
+        baseline_value = row['Recall w/ Questionable']
         
         other_branches_info = []
         for _, other_row in day_data.iterrows():
+            if other_row['Baseline Run'] == 'TRUE':
+                continue
             other_branch = other_row['Branch']
             other_value = other_row['Recall w/ Questionable']
             
             if pd.notna(other_value) and other_value > 0:
-                pct_change = ((other_value - first_value) / first_value * 100) if first_value != 0 else 0
+                pct_change = ((other_value - baseline_value) / baseline_value * 100) if baseline_value != 0 else 0
                 sign = '+' if pct_change >= 0 else ''
                 other_branches_info.append(f"{other_branch}: {other_value:.2%} ({sign}{pct_change:.1f}%)")
         
-        hover_text = f"<b>Branch: {first_branch}</b><br>"
-        hover_text += f"Value: {first_value:.2%}<br>"
+        hover_text = f"<b>Branch: {baseline_branch} (Baseline)</b><br>"
+        hover_text += f"Value: {baseline_value:.2%}<br>"
         hover_text += f"<br><b>Other branches this day:</b><br>"
         hover_text += "<br>".join(other_branches_info) if other_branches_info else "None"
         
@@ -731,8 +737,8 @@ def create_metrics_recall_figure():
     fig = go.Figure()
     
     fig.add_trace(go.Scatter(
-        x=pd.to_datetime(daily_first['Date']),
-        y=daily_first['Recall w/ Questionable'],
+        x=pd.to_datetime(daily_baseline['Date']),
+        y=daily_baseline['Recall w/ Questionable'],
         mode='markers',
         marker=dict(size=10, color=COLORS['secondary']),
         name='Daily First Reading',
@@ -757,35 +763,38 @@ def create_metrics_recall_figure():
     return fig
 
 def create_metrics_precision_figure():
-    """Precision with Questionable - first data point per date"""
+    """Precision with Questionable - baseline run per date"""
     df_local = df_metrics.copy()
     df_local['Date'] = df_local['Start Datetime (local)'].dt.date
-    daily_first = df_local.groupby('Date').first().reset_index()
+    df_baseline = df_local[df_local['Baseline Run'] == 'TRUE'].copy()
+    daily_baseline = df_baseline.groupby('Date').first().reset_index()
     
     # Filter out zeros and NaN values
-    daily_first = daily_first[daily_first['Precision w/ Questionable'].notna()]
-    daily_first = daily_first[daily_first['Precision w/ Questionable'] > 0]
+    daily_baseline = daily_baseline[daily_baseline['Precision w/ Questionable'].notna()]
+    daily_baseline = daily_baseline[daily_baseline['Precision w/ Questionable'] > 0]
     
     all_dates_data = []
-    for idx, row in daily_first.iterrows():
+    for idx, row in daily_baseline.iterrows():
         date = row['Date']
         day_data = df_local[df_local['Date'] == date].copy()
         
-        first_branch = row['Branch']
-        first_value = row['Precision w/ Questionable']
+        baseline_branch = row['Branch']
+        baseline_value = row['Precision w/ Questionable']
         
         other_branches_info = []
         for _, other_row in day_data.iterrows():
+            if other_row['Baseline Run'] == 'TRUE':
+                continue
             other_branch = other_row['Branch']
             other_value = other_row['Precision w/ Questionable']
             
             if pd.notna(other_value) and other_value > 0:
-                pct_change = ((other_value - first_value) / first_value * 100) if first_value != 0 else 0
+                pct_change = ((other_value - baseline_value) / baseline_value * 100) if baseline_value != 0 else 0
                 sign = '+' if pct_change >= 0 else ''
                 other_branches_info.append(f"{other_branch}: {other_value:.2%} ({sign}{pct_change:.1f}%)")
         
-        hover_text = f"<b>Branch: {first_branch}</b><br>"
-        hover_text += f"Value: {first_value:.2%}<br>"
+        hover_text = f"<b>Branch: {baseline_branch} (Baseline)</b><br>"
+        hover_text += f"Value: {baseline_value:.2%}<br>"
         hover_text += f"<br><b>Other branches this day:</b><br>"
         hover_text += "<br>".join(other_branches_info) if other_branches_info else "None"
         
@@ -794,8 +803,8 @@ def create_metrics_precision_figure():
     fig = go.Figure()
     
     fig.add_trace(go.Scatter(
-        x=pd.to_datetime(daily_first['Date']),
-        y=daily_first['Precision w/ Questionable'],
+        x=pd.to_datetime(daily_baseline['Date']),
+        y=daily_baseline['Precision w/ Questionable'],
         mode='markers',
         marker=dict(size=10, color=COLORS['accent']),
         name='Daily First Reading',
@@ -820,35 +829,38 @@ def create_metrics_precision_figure():
     return fig
 
 def create_metrics_harvest_speed_figure():
-    """Real Harvest Speed - first data point per date"""
+    """Real Harvest Speed - baseline run per date"""
     df_local = df_metrics.copy()
     df_local['Date'] = df_local['Start Datetime (local)'].dt.date
-    daily_first = df_local.groupby('Date').first().reset_index()
+    df_baseline = df_local[df_local['Baseline Run'] == 'TRUE'].copy()
+    daily_baseline = df_baseline.groupby('Date').first().reset_index()
     
     # Filter out zeros and NaN values
-    daily_first = daily_first[daily_first['Real Harvest Speed'].notna()]
-    daily_first = daily_first[daily_first['Real Harvest Speed'] > 0]
+    daily_baseline = daily_baseline[daily_baseline['Real Harvest Speed'].notna()]
+    daily_baseline = daily_baseline[daily_baseline['Real Harvest Speed'] > 0]
     
     all_dates_data = []
-    for idx, row in daily_first.iterrows():
+    for idx, row in daily_baseline.iterrows():
         date = row['Date']
         day_data = df_local[df_local['Date'] == date].copy()
         
-        first_branch = row['Branch']
-        first_value = row['Real Harvest Speed']
+        baseline_branch = row['Branch']
+        baseline_value = row['Real Harvest Speed']
         
         other_branches_info = []
         for _, other_row in day_data.iterrows():
+            if other_row['Baseline Run'] == 'TRUE':
+                continue
             other_branch = other_row['Branch']
             other_value = other_row['Real Harvest Speed']
             
             if pd.notna(other_value) and other_value > 0:
-                pct_change = ((other_value - first_value) / first_value * 100) if first_value != 0 else 0
+                pct_change = ((other_value - baseline_value) / baseline_value * 100) if baseline_value != 0 else 0
                 sign = '+' if pct_change >= 0 else ''
                 other_branches_info.append(f"{other_branch}: {other_value:.2f} ({sign}{pct_change:.1f}%)")
         
-        hover_text = f"<b>Branch: {first_branch}</b><br>"
-        hover_text += f"Value: {first_value:.2f}<br>"
+        hover_text = f"<b>Branch: {baseline_branch} (Baseline)</b><br>"
+        hover_text += f"Value: {baseline_value:.2f}<br>"
         hover_text += f"<br><b>Other branches this day:</b><br>"
         hover_text += "<br>".join(other_branches_info) if other_branches_info else "None"
         
@@ -857,8 +869,8 @@ def create_metrics_harvest_speed_figure():
     fig = go.Figure()
     
     fig.add_trace(go.Scatter(
-        x=pd.to_datetime(daily_first['Date']),
-        y=daily_first['Real Harvest Speed'],
+        x=pd.to_datetime(daily_baseline['Date']),
+        y=daily_baseline['Real Harvest Speed'],
         mode='markers',
         marker=dict(size=10, color=COLORS['primary']),
         name='Daily First Reading',
@@ -883,35 +895,38 @@ def create_metrics_harvest_speed_figure():
     return fig
 
 def create_metrics_drop_rate_figure():
-    """Drop Rate - first data point per date"""
+    """Drop Rate - baseline run per date"""
     df_local = df_metrics.copy()
     df_local['Date'] = df_local['Start Datetime (local)'].dt.date
-    daily_first = df_local.groupby('Date').first().reset_index()
+    df_baseline = df_local[df_local['Baseline Run'] == 'TRUE'].copy()
+    daily_baseline = df_baseline.groupby('Date').first().reset_index()
     
     # Filter out zeros and NaN values
-    daily_first = daily_first[daily_first['Drop Rate'].notna()]
-    daily_first = daily_first[daily_first['Drop Rate'] > 0]
+    daily_baseline = daily_baseline[daily_baseline['Drop Rate'].notna()]
+    daily_baseline = daily_baseline[daily_baseline['Drop Rate'] > 0]
     
     all_dates_data = []
-    for idx, row in daily_first.iterrows():
+    for idx, row in daily_baseline.iterrows():
         date = row['Date']
         day_data = df_local[df_local['Date'] == date].copy()
         
-        first_branch = row['Branch']
-        first_value = row['Drop Rate']
+        baseline_branch = row['Branch']
+        baseline_value = row['Drop Rate']
         
         other_branches_info = []
         for _, other_row in day_data.iterrows():
+            if other_row['Baseline Run'] == 'TRUE':
+                continue
             other_branch = other_row['Branch']
             other_value = other_row['Drop Rate']
             
             if pd.notna(other_value) and other_value > 0:
-                pct_change = ((other_value - first_value) / first_value * 100) if first_value != 0 else 0
+                pct_change = ((other_value - baseline_value) / baseline_value * 100) if baseline_value != 0 else 0
                 sign = '+' if pct_change >= 0 else ''
                 other_branches_info.append(f"{other_branch}: {other_value:.2%} ({sign}{pct_change:.1f}%)")
         
-        hover_text = f"<b>Branch: {first_branch}</b><br>"
-        hover_text += f"Value: {first_value:.2%}<br>"
+        hover_text = f"<b>Branch: {baseline_branch} (Baseline)</b><br>"
+        hover_text += f"Value: {baseline_value:.2%}<br>"
         hover_text += f"<br><b>Other branches this day:</b><br>"
         hover_text += "<br>".join(other_branches_info) if other_branches_info else "None"
         
@@ -920,8 +935,8 @@ def create_metrics_drop_rate_figure():
     fig = go.Figure()
     
     fig.add_trace(go.Scatter(
-        x=pd.to_datetime(daily_first['Date']),
-        y=daily_first['Drop Rate'],
+        x=pd.to_datetime(daily_baseline['Date']),
+        y=daily_baseline['Drop Rate'],
         mode='markers',
         marker=dict(size=10, color=COLORS['secondary']),
         name='Daily First Reading',
