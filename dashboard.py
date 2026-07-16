@@ -631,7 +631,7 @@ def create_metrics_ripe_fruits_figure():
     
     # Get baseline run per date
     df_local['Date'] = df_local['Start Datetime (local)'].dt.date
-    df_baseline = df_local[df_local['Baseline Run'] == 'TRUE'].copy()
+    df_baseline = df_local[df_local['Baseline Run?'] == 'TRUE'].copy()
     daily_baseline = df_baseline.groupby('Date').first().reset_index()
     
     # Filter out zeros and NaN values
@@ -651,7 +651,7 @@ def create_metrics_ripe_fruits_figure():
         # Get all other branches for this day with their values and percentage differences
         other_branches_info = []
         for _, other_row in day_data.iterrows():
-            if other_row['Baseline Run'] == 'TRUE':
+            if other_row['Baseline Run?'] == 'TRUE':
                 continue
             other_branch = other_row['Branch']
             other_value = other_row['Ripe Fruits per meter']
@@ -700,7 +700,7 @@ def create_metrics_recall_figure():
     """Recall with Questionable - baseline run per date"""
     df_local = df_metrics.copy()
     df_local['Date'] = df_local['Start Datetime (local)'].dt.date
-    df_baseline = df_local[df_local['Baseline Run'] == 'TRUE'].copy()
+    df_baseline = df_local[df_local['Baseline Run?'] == 'TRUE'].copy()
     daily_baseline = df_baseline.groupby('Date').first().reset_index()
     
     # Filter out zeros and NaN values
@@ -717,7 +717,7 @@ def create_metrics_recall_figure():
         
         other_branches_info = []
         for _, other_row in day_data.iterrows():
-            if other_row['Baseline Run'] == 'TRUE':
+            if other_row['Baseline Run?'] == 'TRUE':
                 continue
             other_branch = other_row['Branch']
             other_value = other_row['Recall w/ Questionable']
@@ -766,7 +766,7 @@ def create_metrics_precision_figure():
     """Precision with Questionable - baseline run per date"""
     df_local = df_metrics.copy()
     df_local['Date'] = df_local['Start Datetime (local)'].dt.date
-    df_baseline = df_local[df_local['Baseline Run'] == 'TRUE'].copy()
+    df_baseline = df_local[df_local['Baseline Run?'] == 'TRUE'].copy()
     daily_baseline = df_baseline.groupby('Date').first().reset_index()
     
     # Filter out zeros and NaN values
@@ -783,7 +783,7 @@ def create_metrics_precision_figure():
         
         other_branches_info = []
         for _, other_row in day_data.iterrows():
-            if other_row['Baseline Run'] == 'TRUE':
+            if other_row['Baseline Run?'] == 'TRUE':
                 continue
             other_branch = other_row['Branch']
             other_value = other_row['Precision w/ Questionable']
@@ -832,7 +832,7 @@ def create_metrics_harvest_speed_figure():
     """Real Harvest Speed - baseline run per date"""
     df_local = df_metrics.copy()
     df_local['Date'] = df_local['Start Datetime (local)'].dt.date
-    df_baseline = df_local[df_local['Baseline Run'] == 'TRUE'].copy()
+    df_baseline = df_local[df_local['Baseline Run?'] == 'TRUE'].copy()
     daily_baseline = df_baseline.groupby('Date').first().reset_index()
     
     # Filter out zeros and NaN values
@@ -849,7 +849,7 @@ def create_metrics_harvest_speed_figure():
         
         other_branches_info = []
         for _, other_row in day_data.iterrows():
-            if other_row['Baseline Run'] == 'TRUE':
+            if other_row['Baseline Run?'] == 'TRUE':
                 continue
             other_branch = other_row['Branch']
             other_value = other_row['Real Harvest Speed']
@@ -898,7 +898,7 @@ def create_metrics_drop_rate_figure():
     """Drop Rate - baseline run per date"""
     df_local = df_metrics.copy()
     df_local['Date'] = df_local['Start Datetime (local)'].dt.date
-    df_baseline = df_local[df_local['Baseline Run'] == 'TRUE'].copy()
+    df_baseline = df_local[df_local['Baseline Run?'] == 'TRUE'].copy()
     daily_baseline = df_baseline.groupby('Date').first().reset_index()
     
     # Filter out zeros and NaN values
@@ -915,7 +915,7 @@ def create_metrics_drop_rate_figure():
         
         other_branches_info = []
         for _, other_row in day_data.iterrows():
-            if other_row['Baseline Run'] == 'TRUE':
+            if other_row['Baseline Run?'] == 'TRUE':
                 continue
             other_branch = other_row['Branch']
             other_value = other_row['Drop Rate']
