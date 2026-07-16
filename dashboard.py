@@ -482,7 +482,7 @@ def create_harvest_speed_figure():
             'font': {'size': 18, 'color': COLORS['text'], 'family': 'system-ui'}
         },
         xaxis_title='',
-        yaxis_title='Speed (m/hr)',
+        yaxis_title='seconds/tomato',
         height=400,
         hovermode='x unified',
         xaxis=dict(
