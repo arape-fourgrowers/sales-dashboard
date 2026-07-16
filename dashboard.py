@@ -230,6 +230,14 @@ app.layout = html.Div([
     # Tab content
     html.Div(id='tabs-content'),
     
+    # Loading spinner
+    dcc.Loading(
+        id="loading",
+        type="default",
+        fullscreen=False,
+        children=html.Div(id="loading-output")
+    ),
+    
     # Footer
     html.Div([
         html.P(f"Last updated: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')} | Data Source: Google Sheets", style={
@@ -251,10 +259,13 @@ app.layout = html.Div([
 })
 
 # Callback to render tab content
-@callback(Output('tabs-content', 'children'), Input('tabs', 'value'))
+@callback(
+    [Output('tabs-content', 'children'), Output('loading-output', 'children')],
+    Input('tabs', 'value')
+)
 def render_content(tab):
     if tab == 'tab-1':
-        return html.Div([
+        content = html.Div([
             # Chart 1: Ripe Fruits per Meter
             html.Div([
                 dcc.Graph(id='ripe-fruits-per-meter', figure=create_ripe_fruits_figure(), config={'displayModeBar': True, 'displaylogo': False})
@@ -303,9 +314,11 @@ def render_content(tab):
                 'border': f'1px solid {COLORS["border"]}'
             }),
         ], style={'padding': '32px 40px', 'maxWidth': '1400px', 'margin': '0 auto', 'background': COLORS['surface']})
+        
+        return content, ""
     
     elif tab == 'tab-2':
-        return html.Div([
+        content = html.Div([
             # Metrics Testing Charts
             html.Div([
                 dcc.Graph(id='metrics-ripe-fruits', figure=create_metrics_ripe_fruits_figure(), config={'displayModeBar': True, 'displaylogo': False})
@@ -362,6 +375,8 @@ def render_content(tab):
                 'border': f'1px solid {COLORS["border"]}'
             }),
         ], style={'padding': '32px 40px', 'maxWidth': '1400px', 'margin': '0 auto', 'background': COLORS['surface']})
+        
+        return content, ""
 
 # Create static figures with default 4-week view
 def create_ripe_fruits_figure():
