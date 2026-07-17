@@ -7,9 +7,13 @@ import plotly.graph_objects as go
 from datetime import datetime, timedelta
 
 # Google Sheet configuration
-SHEET_ID = "1pblkbokP6SP-YYeUIxvYZ9L0BJqcbFGjdY5DJRxbLb4"
-SHEET_NAME = "Costa Continuous Harvesting"
-METRICS_TESTING_SHEET = "Metrics Testing"
+COSTA_SHEET_ID = "1pblkbokP6SP-YYeUIxvYZ9L0BJqcbFGjdY5DJRxbLb4"
+COSTA_SHEET_NAME = "Costa Continuous Harvesting"
+COSTA_METRICS_SHEET = "Metrics Testing"
+
+HA_SHEET_ID = "1DKtjOg62fYP2iHw-DpUDjsHWfmYaYcblBMKqxC0V9gc"
+HA_SHEET_NAME = "H&A Continuous Harvesting"
+HA_METRICS_SHEET = "Metrics Testing"
 
 # Professional color scheme - FourGrowers branding
 COLORS = {
@@ -45,7 +49,7 @@ PLOTLY_TEMPLATE = {
     }
 }
 
-def load_data():
+def load_data(sheet_id, sheet_name):
     """Load data from Google Sheets"""
     scopes = [
         'https://www.googleapis.com/auth/spreadsheets.readonly',
@@ -54,18 +58,36 @@ def load_data():
     
     creds = Credentials.from_service_account_file('credentials.json', scopes=scopes)
     client = gspread.authorize(creds)
-    spreadsheet = client.open_by_key(SHEET_ID)
-    worksheet = spreadsheet.worksheet(SHEET_NAME)
+    spreadsheet = client.open_by_key(sheet_id)
+    worksheet = spreadsheet.worksheet(sheet_name)
     
     data = worksheet.get_all_values()
     headers = data[1]  # Row 2 has headers
-    df = pd.DataFrame(data[2:], columns=headers)  # Data starts at row 3
     
-    # Convert date column to datetime
-    df['Start Datetime (AEDT/AEST - Costa Time)'] = pd.to_datetime(
-        df['Start Datetime (AEDT/AEST - Costa Time)'], 
-        errors='coerce'
-    )
+    # Handle duplicate column names by making them unique
+    seen = {}
+    unique_headers = []
+    for h in headers:
+        if h in seen:
+            seen[h] += 1
+            unique_headers.append(f"{h}_{seen[h]}")
+        else:
+            seen[h] = 0
+            unique_headers.append(h)
+    
+    df = pd.DataFrame(data[2:], columns=unique_headers)  # Data starts at row 3
+    
+    # Standardize datetime column name
+    datetime_col = None
+    for col in df.columns:
+        if 'datetime' in col.lower() and 'start' in col.lower():
+            datetime_col = col
+            break
+    
+    if datetime_col:
+        df['Start Datetime'] = pd.to_datetime(df[datetime_col], errors='coerce')
+    else:
+        raise ValueError(f"Could not find datetime column in {sheet_name}")
     
     # Convert numeric columns
     numeric_cols = [
@@ -81,14 +103,14 @@ def load_data():
             df[col] = pd.to_numeric(df[col], errors='coerce')
     
     # Remove rows with invalid dates
-    df = df.dropna(subset=['Start Datetime (AEDT/AEST - Costa Time)'])
+    df = df.dropna(subset=['Start Datetime'])
     
     # Sort by date
-    df = df.sort_values('Start Datetime (AEDT/AEST - Costa Time)')
+    df = df.sort_values('Start Datetime')
     
     return df
 
-def load_metrics_testing_data():
+def load_metrics_testing_data(sheet_id, sheet_name):
     """Load Metrics Testing data from Google Sheets"""
     scopes = [
         'https://www.googleapis.com/auth/spreadsheets.readonly',
@@ -97,15 +119,36 @@ def load_metrics_testing_data():
     
     creds = Credentials.from_service_account_file('credentials.json', scopes=scopes)
     client = gspread.authorize(creds)
-    spreadsheet = client.open_by_key(SHEET_ID)
-    worksheet = spreadsheet.worksheet(METRICS_TESTING_SHEET)
+    spreadsheet = client.open_by_key(sheet_id)
+    worksheet = spreadsheet.worksheet(sheet_name)
     
     data = worksheet.get_all_values()
     headers = data[1]  # Row 2 has headers
-    df = pd.DataFrame(data[2:], columns=headers)  # Data starts at row 3
     
-    # Convert date column to datetime
-    df['Start Datetime (local)'] = pd.to_datetime(df['Start Datetime (local)'], errors='coerce')
+    # Handle duplicate column names by making them unique
+    seen = {}
+    unique_headers = []
+    for h in headers:
+        if h in seen:
+            seen[h] += 1
+            unique_headers.append(f"{h}_{seen[h]}")
+        else:
+            seen[h] = 0
+            unique_headers.append(h)
+    
+    df = pd.DataFrame(data[2:], columns=unique_headers)  # Data starts at row 3
+    
+    # Standardize datetime column name
+    datetime_col = None
+    for col in df.columns:
+        if 'datetime' in col.lower() and 'start' in col.lower():
+            datetime_col = col
+            break
+    
+    if datetime_col:
+        df['Start Datetime'] = pd.to_datetime(df[datetime_col], errors='coerce')
+    else:
+        raise ValueError(f"Could not find datetime column in {sheet_name}")
     
     # Define percentage columns (need special handling to remove % sign)
     percentage_cols = [
@@ -133,28 +176,44 @@ def load_metrics_testing_data():
             df[col] = pd.to_numeric(df[col], errors='coerce')
     
     # Remove rows with invalid dates
-    df = df.dropna(subset=['Start Datetime (local)'])
+    df = df.dropna(subset=['Start Datetime'])
     
     # Sort by date
-    df = df.sort_values('Start Datetime (local)')
+    df = df.sort_values('Start Datetime')
     
     return df
 
 # Load the data
 print("Loading data from Google Sheets...")
-df = load_data()
-print(f"Loaded {len(df)} rows from Costa Continuous Harvesting")
+df_costa = load_data(COSTA_SHEET_ID, COSTA_SHEET_NAME)
+print(f"Loaded {len(df_costa)} rows from Costa")
+df_costa['Farm'] = 'Costa'
+
+df_ha = load_data(HA_SHEET_ID, HA_SHEET_NAME)
+print(f"Loaded {len(df_ha)} rows from H&A")
+df_ha['Farm'] = 'H&A'
+
+# Combine both farms
+df = pd.concat([df_costa, df_ha], ignore_index=True, sort=False)
 
 print("Loading Metrics Testing data...")
-df_metrics = load_metrics_testing_data()
-print(f"Loaded {len(df_metrics)} rows from Metrics Testing")
+df_metrics_costa = load_metrics_testing_data(COSTA_SHEET_ID, COSTA_METRICS_SHEET)
+print(f"Loaded {len(df_metrics_costa)} rows from Costa Metrics Testing")
+df_metrics_costa['Farm'] = 'Costa'
+
+df_metrics_ha = load_metrics_testing_data(HA_SHEET_ID, HA_METRICS_SHEET)
+print(f"Loaded {len(df_metrics_ha)} rows from H&A Metrics Testing")
+df_metrics_ha['Farm'] = 'H&A'
+
+# Combine both farms
+df_metrics = pd.concat([df_metrics_costa, df_metrics_ha], ignore_index=True, sort=False)
 
 # Calculate default date range (last 4 weeks)
-max_date = df['Start Datetime (AEDT/AEST - Costa Time)'].max()
+max_date = df['Start Datetime'].max()
 default_start = max_date - timedelta(weeks=4)
 
 # Calculate default date range for metrics testing (last 4 weeks)
-max_date_metrics = df_metrics['Start Datetime (local)'].max()
+max_date_metrics = df_metrics['Start Datetime'].max()
 default_start_metrics = max_date_metrics - timedelta(weeks=4)
 
 # Initialize the Dash app
@@ -172,7 +231,7 @@ app.layout = html.Div([
                 'color': COLORS['primary'],
                 'fontFamily': 'system-ui, -apple-system, sans-serif'
             }),
-            html.P("Real-time performance metrics for Costa continuous harvesting operations", style={
+            html.P("Real-time performance metrics for continuous harvesting operations", style={
                 'margin': '8px 0 0 0',
                 'fontSize': '14px',
                 'color': COLORS['text_secondary'],
@@ -197,6 +256,37 @@ app.layout = html.Div([
         'background': COLORS['background'],
         'borderBottom': f'3px solid {COLORS["primary"]}',
         'boxShadow': '0 2px 8px rgba(0, 0, 0, 0.08)'
+    }),
+    
+    # Farm selector
+    html.Div([
+        html.Label("Select Farms:", style={
+            'fontWeight': '600',
+            'fontSize': '14px',
+            'marginRight': '16px',
+            'color': COLORS['text']
+        }),
+        dcc.Checklist(
+            id='farm-selector',
+            options=[
+                {'label': ' Costa', 'value': 'Costa'},
+                {'label': ' H&A', 'value': 'H&A'}
+            ],
+            value=['Costa', 'H&A'],
+            inline=True,
+            style={'display': 'inline-block'},
+            labelStyle={
+                'marginRight': '20px',
+                'fontSize': '14px',
+                'fontWeight': '500'
+            }
+        )
+    ], style={
+        'padding': '16px 40px',
+        'background': COLORS['background'],
+        'borderBottom': f'1px solid {COLORS["border"]}',
+        'display': 'flex',
+        'alignItems': 'center'
     }),
     
     # Tabs
@@ -269,14 +359,18 @@ app.layout = html.Div([
 # Callback to render tab content
 @callback(
     Output('tabs-content', 'children'),
-    Input('tabs', 'value')
+    Input('tabs', 'value'),
+    Input('farm-selector', 'value')
 )
-def render_content(tab):
+def render_content(tab, selected_farms):
+    if not selected_farms:
+        selected_farms = []
+    
     if tab == 'tab-1':
         return html.Div([
             # Chart 1: Ripe Fruits per Meter
             html.Div([
-                dcc.Graph(id='ripe-fruits-per-meter', figure=create_ripe_fruits_figure(), config={'displayModeBar': True, 'displaylogo': False})
+                dcc.Graph(id='ripe-fruits-per-meter', figure=create_ripe_fruits_figure(selected_farms), config={'displayModeBar': True, 'displaylogo': False})
             ], style={
                 'background': COLORS['background'],
                 'borderRadius': '8px',
@@ -288,7 +382,7 @@ def render_content(tab):
             
             # Chart 2: Robot Harvest Speed
             html.Div([
-                dcc.Graph(id='robot-harvest-speed', figure=create_harvest_speed_figure(), config={'displayModeBar': True, 'displaylogo': False})
+                dcc.Graph(id='robot-harvest-speed', figure=create_harvest_speed_figure(selected_farms), config={'displayModeBar': True, 'displaylogo': False})
             ], style={
                 'background': COLORS['background'],
                 'borderRadius': '8px',
@@ -300,7 +394,7 @@ def render_content(tab):
             
             # Chart 3: Harvest Weight
             html.Div([
-                dcc.Graph(id='harvest-weight', figure=create_harvest_weight_figure(), config={'displayModeBar': True, 'displaylogo': False})
+                dcc.Graph(id='harvest-weight', figure=create_harvest_weight_figure(selected_farms), config={'displayModeBar': True, 'displaylogo': False})
             ], style={
                 'background': COLORS['background'],
                 'borderRadius': '8px',
@@ -312,7 +406,7 @@ def render_content(tab):
             
             # Chart 4: Average Fruit Weight
             html.Div([
-                dcc.Graph(id='average-fruit-weight', figure=create_fruit_weight_figure(), config={'displayModeBar': True, 'displaylogo': False})
+                dcc.Graph(id='average-fruit-weight', figure=create_fruit_weight_figure(selected_farms), config={'displayModeBar': True, 'displaylogo': False})
             ], style={
                 'background': COLORS['background'],
                 'borderRadius': '8px',
@@ -327,7 +421,7 @@ def render_content(tab):
         return html.Div([
             # Metrics Testing Charts
             html.Div([
-                dcc.Graph(id='metrics-ripe-fruits', figure=create_metrics_ripe_fruits_figure(), config={'displayModeBar': True, 'displaylogo': False})
+                dcc.Graph(id='metrics-ripe-fruits', figure=create_metrics_ripe_fruits_figure(selected_farms), config={'displayModeBar': True, 'displaylogo': False})
             ], style={
                 'background': COLORS['background'],
                 'borderRadius': '8px',
@@ -338,7 +432,7 @@ def render_content(tab):
             }),
             
             html.Div([
-                dcc.Graph(id='metrics-recall', figure=create_metrics_recall_figure(), config={'displayModeBar': True, 'displaylogo': False})
+                dcc.Graph(id='metrics-recall', figure=create_metrics_recall_figure(selected_farms), config={'displayModeBar': True, 'displaylogo': False})
             ], style={
                 'background': COLORS['background'],
                 'borderRadius': '8px',
@@ -349,7 +443,7 @@ def render_content(tab):
             }),
             
             html.Div([
-                dcc.Graph(id='metrics-precision', figure=create_metrics_precision_figure(), config={'displayModeBar': True, 'displaylogo': False})
+                dcc.Graph(id='metrics-precision', figure=create_metrics_precision_figure(selected_farms), config={'displayModeBar': True, 'displaylogo': False})
             ], style={
                 'background': COLORS['background'],
                 'borderRadius': '8px',
@@ -360,7 +454,7 @@ def render_content(tab):
             }),
             
             html.Div([
-                dcc.Graph(id='metrics-harvest-speed', figure=create_metrics_harvest_speed_figure(), config={'displayModeBar': True, 'displaylogo': False})
+                dcc.Graph(id='metrics-harvest-speed', figure=create_metrics_harvest_speed_figure(selected_farms), config={'displayModeBar': True, 'displaylogo': False})
             ], style={
                 'background': COLORS['background'],
                 'borderRadius': '8px',
@@ -371,7 +465,7 @@ def render_content(tab):
             }),
             
             html.Div([
-                dcc.Graph(id='metrics-drop-rate', figure=create_metrics_drop_rate_figure(), config={'displayModeBar': True, 'displaylogo': False})
+                dcc.Graph(id='metrics-drop-rate', figure=create_metrics_drop_rate_figure(selected_farms), config={'displayModeBar': True, 'displaylogo': False})
             ], style={
                 'background': COLORS['background'],
                 'borderRadius': '8px',
@@ -383,11 +477,14 @@ def render_content(tab):
         ], style={'padding': '32px 40px', 'maxWidth': '1400px', 'margin': '0 auto', 'background': COLORS['surface']})
 
 # Create static figures with default 4-week view
-def create_ripe_fruits_figure():
+def create_ripe_fruits_figure(selected_farms):
     """Chart 1: Ripe Fruits per Meter over time (all robots grouped) - 7 day rolling average"""
+    # Filter by selected farms
+    chart_df = df[df['Farm'].isin(selected_farms)].copy() if selected_farms else df.copy()
+    
     # Remove NaN values
-    chart_df = df.dropna(subset=['Ripe Fruits per Meter']).copy()
-    chart_df = chart_df.sort_values('Start Datetime (AEDT/AEST - Costa Time)')
+    chart_df = chart_df.dropna(subset=['Ripe Fruits per Meter']).copy()
+    chart_df = chart_df.sort_values('Start Datetime')
     
     # Calculate 7-day rolling average
     chart_df['Rolling_Avg'] = chart_df['Ripe Fruits per Meter'].rolling(window=7, min_periods=1).mean()
@@ -396,7 +493,7 @@ def create_ripe_fruits_figure():
     
     # Add rolling average line
     fig.add_trace(go.Scatter(
-        x=chart_df['Start Datetime (AEDT/AEST - Costa Time)'],
+        x=chart_df['Start Datetime'],
         y=chart_df['Rolling_Avg'],
         mode='lines',
         name='7-Day Average',
@@ -437,12 +534,15 @@ def create_ripe_fruits_figure():
     
     return fig
 
-def create_harvest_speed_figure():
+def create_harvest_speed_figure(selected_farms):
     """Chart 2: Robot Harvest Speed over time by robot - 7 day rolling average"""
+    # Filter by selected farms
+    chart_df = df[df['Farm'].isin(selected_farms)].copy() if selected_farms else df.copy()
+    
     # Remove NaN values and filter out invalid robot numbers
-    chart_df = df.dropna(subset=['Robot Harvest Speed', 'AMA Number']).copy()
+    chart_df = chart_df.dropna(subset=['Robot Harvest Speed', 'AMA Number']).copy()
     chart_df = chart_df[chart_df['AMA Number'] > 0]
-    chart_df = chart_df.sort_values('Start Datetime (AEDT/AEST - Costa Time)')
+    chart_df = chart_df.sort_values('Start Datetime')
     
     # Convert AMA Number to string for better legend
     chart_df['Robot'] = 'Robot ' + chart_df['AMA Number'].astype(int).astype(str)
@@ -466,7 +566,7 @@ def create_harvest_speed_figure():
         robot_df['Rolling_Avg'] = robot_df['Robot Harvest Speed'].rolling(window=7, min_periods=1).mean()
         
         fig.add_trace(go.Scatter(
-            x=robot_df['Start Datetime (AEDT/AEST - Costa Time)'],
+            x=robot_df['Start Datetime'],
             y=robot_df['Rolling_Avg'],
             mode='lines',
             name=robot,
@@ -515,11 +615,14 @@ def create_harvest_speed_figure():
     
     return fig
 
-def create_harvest_weight_figure():
+def create_harvest_weight_figure(selected_farms):
     """Chart 3: Harvest Weight (kg) Robot Scale over time - 7 day rolling average"""
+    # Filter by selected farms
+    chart_df = df[df['Farm'].isin(selected_farms)].copy() if selected_farms else df.copy()
+    
     # Remove NaN values
-    chart_df = df.dropna(subset=['Harvest \nWeight (kg)\nRobot Scale']).copy()
-    chart_df = chart_df.sort_values('Start Datetime (AEDT/AEST - Costa Time)')
+    chart_df = chart_df.dropna(subset=['Harvest \nWeight (kg)\nRobot Scale']).copy()
+    chart_df = chart_df.sort_values('Start Datetime')
     
     # Calculate 7-day rolling average
     chart_df['Rolling_Avg'] = chart_df['Harvest \nWeight (kg)\nRobot Scale'].rolling(window=7, min_periods=1).mean()
@@ -528,7 +631,7 @@ def create_harvest_weight_figure():
     
     # Add rolling average line
     fig.add_trace(go.Scatter(
-        x=chart_df['Start Datetime (AEDT/AEST - Costa Time)'],
+        x=chart_df['Start Datetime'],
         y=chart_df['Rolling_Avg'],
         mode='lines',
         name='7-Day Average',
@@ -569,11 +672,14 @@ def create_harvest_weight_figure():
     
     return fig
 
-def create_fruit_weight_figure():
+def create_fruit_weight_figure(selected_farms):
     """Chart 4: Average Fruit Weight over time - 7 day rolling average"""
+    # Filter by selected farms
+    chart_df = df[df['Farm'].isin(selected_farms)].copy() if selected_farms else df.copy()
+    
     # Remove NaN values
-    chart_df = df.dropna(subset=['Average Fruit Weight (g)']).copy()
-    chart_df = chart_df.sort_values('Start Datetime (AEDT/AEST - Costa Time)')
+    chart_df = chart_df.dropna(subset=['Average Fruit Weight (g)']).copy()
+    chart_df = chart_df.sort_values('Start Datetime')
     
     # Calculate 7-day rolling average
     chart_df['Rolling_Avg'] = chart_df['Average Fruit Weight (g)'].rolling(window=7, min_periods=1).mean()
@@ -582,7 +688,7 @@ def create_fruit_weight_figure():
     
     # Add rolling average line
     fig.add_trace(go.Scatter(
-        x=chart_df['Start Datetime (AEDT/AEST - Costa Time)'],
+        x=chart_df['Start Datetime'],
         y=chart_df['Rolling_Avg'],
         mode='lines',
         name='7-Day Average',
@@ -624,13 +730,13 @@ def create_fruit_weight_figure():
     return fig
 
 # Metrics Testing Chart Functions
-def create_metrics_ripe_fruits_figure():
+def create_metrics_ripe_fruits_figure(selected_farms):
     """Ripe Fruits Per Meter - baseline runs per date, clickable to show all points for that day"""
-    # Create local copy to avoid modifying global dataframe
-    df_local = df_metrics.copy()
+    # Filter by selected farms
+    df_local = df_metrics[df_metrics['Farm'].isin(selected_farms)].copy() if selected_farms else df_metrics.copy()
     
     # Get baseline run per date
-    df_local['Date'] = df_local['Start Datetime (local)'].dt.date
+    df_local['Date'] = df_local['Start Datetime'].dt.date
     df_baseline = df_local[df_local['Baseline Run?'] == 'TRUE'].copy()
     daily_baseline = df_baseline.groupby('Date').first().reset_index()
     
@@ -696,10 +802,11 @@ def create_metrics_ripe_fruits_figure():
     
     return fig
 
-def create_metrics_recall_figure():
+def create_metrics_recall_figure(selected_farms):
     """Recall with Questionable - baseline run per date"""
-    df_local = df_metrics.copy()
-    df_local['Date'] = df_local['Start Datetime (local)'].dt.date
+    # Filter by selected farms
+    df_local = df_metrics[df_metrics['Farm'].isin(selected_farms)].copy() if selected_farms else df_metrics.copy()
+    df_local['Date'] = df_local['Start Datetime'].dt.date
     df_baseline = df_local[df_local['Baseline Run?'] == 'TRUE'].copy()
     daily_baseline = df_baseline.groupby('Date').first().reset_index()
     
@@ -762,10 +869,11 @@ def create_metrics_recall_figure():
     
     return fig
 
-def create_metrics_precision_figure():
+def create_metrics_precision_figure(selected_farms):
     """Precision with Questionable - baseline run per date"""
-    df_local = df_metrics.copy()
-    df_local['Date'] = df_local['Start Datetime (local)'].dt.date
+    # Filter by selected farms
+    df_local = df_metrics[df_metrics['Farm'].isin(selected_farms)].copy() if selected_farms else df_metrics.copy()
+    df_local['Date'] = df_local['Start Datetime'].dt.date
     df_baseline = df_local[df_local['Baseline Run?'] == 'TRUE'].copy()
     daily_baseline = df_baseline.groupby('Date').first().reset_index()
     
@@ -828,10 +936,11 @@ def create_metrics_precision_figure():
     
     return fig
 
-def create_metrics_harvest_speed_figure():
+def create_metrics_harvest_speed_figure(selected_farms):
     """Real Harvest Speed - baseline run per date"""
-    df_local = df_metrics.copy()
-    df_local['Date'] = df_local['Start Datetime (local)'].dt.date
+    # Filter by selected farms
+    df_local = df_metrics[df_metrics['Farm'].isin(selected_farms)].copy() if selected_farms else df_metrics.copy()
+    df_local['Date'] = df_local['Start Datetime'].dt.date
     df_baseline = df_local[df_local['Baseline Run?'] == 'TRUE'].copy()
     daily_baseline = df_baseline.groupby('Date').first().reset_index()
     
@@ -894,10 +1003,11 @@ def create_metrics_harvest_speed_figure():
     
     return fig
 
-def create_metrics_drop_rate_figure():
+def create_metrics_drop_rate_figure(selected_farms):
     """Drop Rate - baseline run per date"""
-    df_local = df_metrics.copy()
-    df_local['Date'] = df_local['Start Datetime (local)'].dt.date
+    # Filter by selected farms
+    df_local = df_metrics[df_metrics['Farm'].isin(selected_farms)].copy() if selected_farms else df_metrics.copy()
+    df_local['Date'] = df_local['Start Datetime'].dt.date
     df_baseline = df_local[df_local['Baseline Run?'] == 'TRUE'].copy()
     daily_baseline = df_baseline.groupby('Date').first().reset_index()
     
