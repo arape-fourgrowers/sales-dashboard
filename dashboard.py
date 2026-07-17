@@ -101,7 +101,7 @@ def load_fruit_analytics_data(farm_id='costa'):
         """
         
         # Set a statement timeout
-        conn.run("SET statement_timeout = 15000")  # 15 seconds
+        conn.run("SET statement_timeout = 90000")  # 90 seconds
         result = conn.run(query, farm_id=farm_id)
         conn.close()
         
@@ -615,7 +615,12 @@ def create_ripe_fruits_figure(selected_farms):
     
     # Add Fruit Analytics data (from database)
     if len(selected_farms) > 1:
-        # Show both farms' Fruit Analytics
+        # Show both farms' Fruit Analytics with distinct colors
+        fruit_analytics_colors = {
+            'Costa': '#e76f51',  # Coral/orange
+            'H&A': '#f4a261'     # Sandy orange
+        }
+        
         for farm in selected_farms:
             if farm == 'Costa' and not df_fruit_analytics_costa.empty:
                 fa_df = df_fruit_analytics_costa.copy()
@@ -626,7 +631,7 @@ def create_ripe_fruits_figure(selected_farms):
                     y=fa_df['Rolling_Avg'],
                     mode='lines',
                     name='Costa - Fruit Analytics',
-                    line=dict(color=COLORS['primary'], width=2, dash='dash')
+                    line=dict(color=fruit_analytics_colors['Costa'], width=3, dash='dash')
                 ))
             elif farm == 'H&A' and not df_fruit_analytics_ha.empty:
                 fa_df = df_fruit_analytics_ha.copy()
@@ -637,7 +642,7 @@ def create_ripe_fruits_figure(selected_farms):
                     y=fa_df['Rolling_Avg'],
                     mode='lines',
                     name='H&A - Fruit Analytics',
-                    line=dict(color=COLORS['secondary'], width=2, dash='dash')
+                    line=dict(color=fruit_analytics_colors['H&A'], width=3, dash='dash')
                 ))
     else:
         # Single farm view
@@ -650,7 +655,7 @@ def create_ripe_fruits_figure(selected_farms):
                 y=fa_df['Rolling_Avg'],
                 mode='lines',
                 name='Fruit Analytics',
-                line=dict(color='#d95f02', width=2, dash='dash')
+                line=dict(color='#e76f51', width=3, dash='dash')
             ))
         elif 'H&A' in selected_farms and not df_fruit_analytics_ha.empty:
             fa_df = df_fruit_analytics_ha.copy()
@@ -661,7 +666,7 @@ def create_ripe_fruits_figure(selected_farms):
                 y=fa_df['Rolling_Avg'],
                 mode='lines',
                 name='Fruit Analytics',
-                line=dict(color='#d95f02', width=2, dash='dash')
+                line=dict(color='#e76f51', width=3, dash='dash')
             ))
     
     # Set default x-axis range to last 4 weeks
