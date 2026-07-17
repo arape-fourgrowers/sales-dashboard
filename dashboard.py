@@ -486,21 +486,40 @@ def create_ripe_fruits_figure(selected_farms):
     chart_df = chart_df.dropna(subset=['Ripe Fruits per Meter']).copy()
     chart_df = chart_df.sort_values('Start Datetime')
     
-    # Calculate 7-day rolling average
-    chart_df['Rolling_Avg'] = chart_df['Ripe Fruits per Meter'].rolling(window=7, min_periods=1).mean()
-    
     fig = go.Figure()
     
-    # Add rolling average line
-    fig.add_trace(go.Scatter(
-        x=chart_df['Start Datetime'],
-        y=chart_df['Rolling_Avg'],
-        mode='lines',
-        name='7-Day Average',
-        line=dict(color=COLORS['primary'], width=3),
-        fill='tozeroy',
-        fillcolor='rgba(45, 106, 79, 0.1)'
-    ))
+    # If both farms are selected, show separate lines
+    if len(selected_farms) > 1:
+        farm_colors = {
+            'Costa': COLORS['primary'],
+            'H&A': COLORS['secondary']
+        }
+        
+        for farm in selected_farms:
+            farm_df = chart_df[chart_df['Farm'] == farm].copy()
+            # Calculate 7-day rolling average per farm
+            farm_df['Rolling_Avg'] = farm_df['Ripe Fruits per Meter'].rolling(window=7, min_periods=1).mean()
+            
+            fig.add_trace(go.Scatter(
+                x=farm_df['Start Datetime'],
+                y=farm_df['Rolling_Avg'],
+                mode='lines',
+                name=farm,
+                line=dict(color=farm_colors.get(farm, COLORS['primary']), width=3)
+            ))
+    else:
+        # Single farm or aggregated view
+        chart_df['Rolling_Avg'] = chart_df['Ripe Fruits per Meter'].rolling(window=7, min_periods=1).mean()
+        
+        fig.add_trace(go.Scatter(
+            x=chart_df['Start Datetime'],
+            y=chart_df['Rolling_Avg'],
+            mode='lines',
+            name='7-Day Average',
+            line=dict(color=COLORS['primary'], width=3),
+            fill='tozeroy',
+            fillcolor='rgba(45, 106, 79, 0.1)'
+        ))
     
     # Set default x-axis range to last 4 weeks
     fig.update_xaxes(range=[default_start, max_date])
@@ -529,49 +548,74 @@ def create_ripe_fruits_figure(selected_farms):
         paper_bgcolor=COLORS['background'],
         plot_bgcolor=COLORS['background'],
         font={'color': COLORS['text'], 'family': 'system-ui'},
+        legend=dict(
+            orientation='h',
+            yanchor='bottom',
+            y=1.02,
+            xanchor='right',
+            x=1
+        ),
         margin=dict(l=60, r=40, t=60, b=60)
     )
     
     return fig
 
 def create_harvest_speed_figure(selected_farms):
-    """Chart 2: Robot Harvest Speed over time by robot - 7 day rolling average"""
+    """Chart 2: Robot Harvest Speed over time - aggregated by farm when both selected"""
     # Filter by selected farms
     chart_df = df[df['Farm'].isin(selected_farms)].copy() if selected_farms else df.copy()
     
-    # Remove NaN values and filter out invalid robot numbers
-    chart_df = chart_df.dropna(subset=['Robot Harvest Speed', 'AMA Number']).copy()
-    chart_df = chart_df[chart_df['AMA Number'] > 0]
+    # Remove NaN values
+    chart_df = chart_df.dropna(subset=['Robot Harvest Speed']).copy()
     chart_df = chart_df.sort_values('Start Datetime')
-    
-    # Convert AMA Number to string for better legend
-    chart_df['Robot'] = 'Robot ' + chart_df['AMA Number'].astype(int).astype(str)
     
     fig = go.Figure()
     
-    # FourGrowers green color palette
-    robot_colors = [
-        COLORS['primary'],      # Forest green
-        COLORS['secondary'],    # Medium green
-        COLORS['accent'],       # Light green
-        '#74c69d',              # Lighter green
-        '#95d5b2',              # Even lighter
-        '#b7e4c7',              # Pale green
-        '#d8f3dc'               # Very pale
-    ]
-    
-    # Calculate 7-day rolling average for each robot
-    for idx, robot in enumerate(sorted(chart_df['Robot'].unique())):
-        robot_df = chart_df[chart_df['Robot'] == robot].copy()
-        robot_df['Rolling_Avg'] = robot_df['Robot Harvest Speed'].rolling(window=7, min_periods=1).mean()
+    # If both farms are selected, show separate lines per farm
+    if len(selected_farms) > 1:
+        farm_colors = {
+            'Costa': COLORS['primary'],
+            'H&A': COLORS['secondary']
+        }
         
-        fig.add_trace(go.Scatter(
-            x=robot_df['Start Datetime'],
-            y=robot_df['Rolling_Avg'],
-            mode='lines',
-            name=robot,
-            line=dict(width=2.5, color=robot_colors[idx % len(robot_colors)])
-        ))
+        for farm in selected_farms:
+            farm_df = chart_df[chart_df['Farm'] == farm].copy()
+            # Calculate 7-day rolling average per farm
+            farm_df['Rolling_Avg'] = farm_df['Robot Harvest Speed'].rolling(window=7, min_periods=1).mean()
+            
+            fig.add_trace(go.Scatter(
+                x=farm_df['Start Datetime'],
+                y=farm_df['Rolling_Avg'],
+                mode='lines',
+                name=farm,
+                line=dict(width=3, color=farm_colors.get(farm, COLORS['primary']))
+            ))
+    else:
+        # Single farm - show by robot
+        chart_df = chart_df[chart_df['AMA Number'] > 0]
+        chart_df['Robot'] = 'Robot ' + chart_df['AMA Number'].astype(int).astype(str)
+        
+        robot_colors = [
+            COLORS['primary'],
+            COLORS['secondary'],
+            COLORS['accent'],
+            '#74c69d',
+            '#95d5b2',
+            '#b7e4c7',
+            '#d8f3dc'
+        ]
+        
+        for idx, robot in enumerate(sorted(chart_df['Robot'].unique())):
+            robot_df = chart_df[chart_df['Robot'] == robot].copy()
+            robot_df['Rolling_Avg'] = robot_df['Robot Harvest Speed'].rolling(window=7, min_periods=1).mean()
+            
+            fig.add_trace(go.Scatter(
+                x=robot_df['Start Datetime'],
+                y=robot_df['Rolling_Avg'],
+                mode='lines',
+                name=robot,
+                line=dict(width=2.5, color=robot_colors[idx % len(robot_colors)])
+            ))
     
     # Set default x-axis range to last 4 weeks
     fig.update_xaxes(range=[default_start, max_date])
@@ -624,21 +668,40 @@ def create_harvest_weight_figure(selected_farms):
     chart_df = chart_df.dropna(subset=['Harvest \nWeight (kg)\nRobot Scale']).copy()
     chart_df = chart_df.sort_values('Start Datetime')
     
-    # Calculate 7-day rolling average
-    chart_df['Rolling_Avg'] = chart_df['Harvest \nWeight (kg)\nRobot Scale'].rolling(window=7, min_periods=1).mean()
-    
     fig = go.Figure()
     
-    # Add rolling average line
-    fig.add_trace(go.Scatter(
-        x=chart_df['Start Datetime'],
-        y=chart_df['Rolling_Avg'],
-        mode='lines',
-        name='7-Day Average',
-        line=dict(color=COLORS['secondary'], width=3),
-        fill='tozeroy',
-        fillcolor='rgba(64, 145, 108, 0.1)'
-    ))
+    # If both farms are selected, show separate lines
+    if len(selected_farms) > 1:
+        farm_colors = {
+            'Costa': COLORS['primary'],
+            'H&A': COLORS['secondary']
+        }
+        
+        for farm in selected_farms:
+            farm_df = chart_df[chart_df['Farm'] == farm].copy()
+            # Calculate 7-day rolling average per farm
+            farm_df['Rolling_Avg'] = farm_df['Harvest \nWeight (kg)\nRobot Scale'].rolling(window=7, min_periods=1).mean()
+            
+            fig.add_trace(go.Scatter(
+                x=farm_df['Start Datetime'],
+                y=farm_df['Rolling_Avg'],
+                mode='lines',
+                name=farm,
+                line=dict(color=farm_colors.get(farm, COLORS['primary']), width=3)
+            ))
+    else:
+        # Single farm or aggregated view
+        chart_df['Rolling_Avg'] = chart_df['Harvest \nWeight (kg)\nRobot Scale'].rolling(window=7, min_periods=1).mean()
+        
+        fig.add_trace(go.Scatter(
+            x=chart_df['Start Datetime'],
+            y=chart_df['Rolling_Avg'],
+            mode='lines',
+            name='7-Day Average',
+            line=dict(color=COLORS['secondary'], width=3),
+            fill='tozeroy',
+            fillcolor='rgba(64, 145, 108, 0.1)'
+        ))
     
     # Set default x-axis range to last 4 weeks
     fig.update_xaxes(range=[default_start, max_date])
@@ -667,6 +730,13 @@ def create_harvest_weight_figure(selected_farms):
         paper_bgcolor=COLORS['background'],
         plot_bgcolor=COLORS['background'],
         font={'color': COLORS['text'], 'family': 'system-ui'},
+        legend=dict(
+            orientation='h',
+            yanchor='bottom',
+            y=1.02,
+            xanchor='right',
+            x=1
+        ),
         margin=dict(l=60, r=40, t=60, b=60)
     )
     
@@ -681,21 +751,40 @@ def create_fruit_weight_figure(selected_farms):
     chart_df = chart_df.dropna(subset=['Average Fruit Weight (g)']).copy()
     chart_df = chart_df.sort_values('Start Datetime')
     
-    # Calculate 7-day rolling average
-    chart_df['Rolling_Avg'] = chart_df['Average Fruit Weight (g)'].rolling(window=7, min_periods=1).mean()
-    
     fig = go.Figure()
     
-    # Add rolling average line
-    fig.add_trace(go.Scatter(
-        x=chart_df['Start Datetime'],
-        y=chart_df['Rolling_Avg'],
-        mode='lines',
-        name='7-Day Average',
-        line=dict(color=COLORS['accent'], width=3),
-        fill='tozeroy',
-        fillcolor='rgba(82, 183, 136, 0.1)'
-    ))
+    # If both farms are selected, show separate lines
+    if len(selected_farms) > 1:
+        farm_colors = {
+            'Costa': COLORS['primary'],
+            'H&A': COLORS['secondary']
+        }
+        
+        for farm in selected_farms:
+            farm_df = chart_df[chart_df['Farm'] == farm].copy()
+            # Calculate 7-day rolling average per farm
+            farm_df['Rolling_Avg'] = farm_df['Average Fruit Weight (g)'].rolling(window=7, min_periods=1).mean()
+            
+            fig.add_trace(go.Scatter(
+                x=farm_df['Start Datetime'],
+                y=farm_df['Rolling_Avg'],
+                mode='lines',
+                name=farm,
+                line=dict(color=farm_colors.get(farm, COLORS['primary']), width=3)
+            ))
+    else:
+        # Single farm or aggregated view
+        chart_df['Rolling_Avg'] = chart_df['Average Fruit Weight (g)'].rolling(window=7, min_periods=1).mean()
+        
+        fig.add_trace(go.Scatter(
+            x=chart_df['Start Datetime'],
+            y=chart_df['Rolling_Avg'],
+            mode='lines',
+            name='7-Day Average',
+            line=dict(color=COLORS['accent'], width=3),
+            fill='tozeroy',
+            fillcolor='rgba(82, 183, 136, 0.1)'
+        ))
     
     # Set default x-axis range to last 4 weeks
     fig.update_xaxes(range=[default_start, max_date])
@@ -724,67 +813,246 @@ def create_fruit_weight_figure(selected_farms):
         paper_bgcolor=COLORS['background'],
         plot_bgcolor=COLORS['background'],
         font={'color': COLORS['text'], 'family': 'system-ui'},
+        legend=dict(
+            orientation='h',
+            yanchor='bottom',
+            y=1.02,
+            xanchor='right',
+            x=1
+        ),
         margin=dict(l=60, r=40, t=60, b=60)
     )
     
     return fig
 
 # Metrics Testing Chart Functions
-def create_metrics_ripe_fruits_figure(selected_farms):
-    """Ripe Fruits Per Meter - baseline runs per date, clickable to show all points for that day"""
-    # Filter by selected farms
+# Metrics Testing Chart Functions
+def create_metrics_figure_helper(selected_farms, column_name, title, yaxis_title, format_value_func, color=None):
+    """Helper function to create metrics figures with farm separation"""
     df_local = df_metrics[df_metrics['Farm'].isin(selected_farms)].copy() if selected_farms else df_metrics.copy()
     
-    # Get baseline run per date
     df_local['Date'] = df_local['Start Datetime'].dt.date
     df_baseline = df_local[df_local['Baseline Run?'] == 'TRUE'].copy()
-    daily_baseline = df_baseline.groupby('Date').first().reset_index()
     
     # Filter out zeros and NaN values
-    daily_baseline = daily_baseline[daily_baseline['Ripe Fruits per meter'].notna()]
-    daily_baseline = daily_baseline[daily_baseline['Ripe Fruits per meter'] > 0]
-    
-    # Get all data for each date for hover info
-    all_dates_data = []
-    for idx, row in daily_baseline.iterrows():
-        date = row['Date']
-        day_data = df_local[df_local['Date'] == date].copy()
-        
-        # Get the branch for this baseline data point
-        baseline_branch = row['Branch']
-        baseline_value = row['Ripe Fruits per meter']
-        
-        # Get all other branches for this day with their values and percentage differences
-        other_branches_info = []
-        for _, other_row in day_data.iterrows():
-            if other_row['Baseline Run?'] == 'TRUE':
-                continue
-            other_branch = other_row['Branch']
-            other_value = other_row['Ripe Fruits per meter']
-            
-            if pd.notna(other_value) and other_value > 0:
-                pct_change = ((other_value - baseline_value) / baseline_value * 100) if baseline_value != 0 else 0
-                sign = '+' if pct_change >= 0 else ''
-                other_branches_info.append(f"{other_branch}: {other_value:.2f} ({sign}{pct_change:.1f}%)")
-        
-        hover_text = f"<b>Branch: {baseline_branch} (Baseline)</b><br>"
-        hover_text += f"Value: {baseline_value:.2f}<br>"
-        hover_text += f"<br><b>Other branches this day:</b><br>"
-        hover_text += "<br>".join(other_branches_info) if other_branches_info else "None"
-        
-        all_dates_data.append(hover_text)
+    df_baseline = df_baseline[df_baseline[column_name].notna()]
+    df_baseline = df_baseline[df_baseline[column_name] > 0]
     
     fig = go.Figure()
     
-    fig.add_trace(go.Scatter(
-        x=pd.to_datetime(daily_baseline['Date']),
-        y=daily_baseline['Ripe Fruits per meter'],
-        mode='markers',
-        marker=dict(size=10, color=COLORS['primary']),
-        name='Daily First Reading',
-        customdata=all_dates_data,
-        hovertemplate='<b>Date: %{x|%Y-%m-%d}</b><br>%{customdata}<extra></extra>'
-    ))
+    if len(selected_farms) > 1:
+        farm_colors = {
+            'Costa': COLORS['primary'],
+            'H&A': COLORS['secondary']
+        }
+        
+        for farm in selected_farms:
+            farm_df = df_baseline[df_baseline['Farm'] == farm].copy()
+            daily_baseline = farm_df.groupby('Date').first().reset_index()
+            
+            all_dates_data = []
+            for idx, row in daily_baseline.iterrows():
+                date = row['Date']
+                day_data = df_local[(df_local['Date'] == date) & (df_local['Farm'] == farm)].copy()
+                
+                baseline_branch = row['Branch']
+                baseline_value = row[column_name]
+                
+                other_branches_info = []
+                for _, other_row in day_data.iterrows():
+                    if other_row['Baseline Run?'] == 'TRUE':
+                        continue
+                    other_branch = other_row['Branch']
+                    other_value = other_row[column_name]
+                    
+                    if pd.notna(other_value) and other_value > 0:
+                        pct_change = ((other_value - baseline_value) / baseline_value * 100) if baseline_value != 0 else 0
+                        sign = '+' if pct_change >= 0 else ''
+                        other_branches_info.append(f"{other_branch}: {format_value_func(other_value)} ({sign}{pct_change:.1f}%)")
+                
+                hover_text = f"<b>Farm: {farm}</b><br>"
+                hover_text += f"<b>Branch: {baseline_branch} (Baseline)</b><br>"
+                hover_text += f"Value: {format_value_func(baseline_value)}<br>"
+                hover_text += f"<br><b>Other branches this day:</b><br>"
+                hover_text += "<br>".join(other_branches_info) if other_branches_info else "None"
+                
+                all_dates_data.append(hover_text)
+            
+            fig.add_trace(go.Scatter(
+                x=pd.to_datetime(daily_baseline['Date']),
+                y=daily_baseline[column_name],
+                mode='markers',
+                marker=dict(size=10, color=farm_colors.get(farm, COLORS['primary'])),
+                name=farm,
+                customdata=all_dates_data,
+                hovertemplate='<b>Date: %{x|%Y-%m-%d}</b><br>%{customdata}<extra></extra>'
+            ))
+    else:
+        daily_baseline = df_baseline.groupby('Date').first().reset_index()
+        
+        all_dates_data = []
+        for idx, row in daily_baseline.iterrows():
+            date = row['Date']
+            day_data = df_local[df_local['Date'] == date].copy()
+            
+            baseline_branch = row['Branch']
+            baseline_value = row[column_name]
+            
+            other_branches_info = []
+            for _, other_row in day_data.iterrows():
+                if other_row['Baseline Run?'] == 'TRUE':
+                    continue
+                other_branch = other_row['Branch']
+                other_value = other_row[column_name]
+                
+                if pd.notna(other_value) and other_value > 0:
+                    pct_change = ((other_value - baseline_value) / baseline_value * 100) if baseline_value != 0 else 0
+                    sign = '+' if pct_change >= 0 else ''
+                    other_branches_info.append(f"{other_branch}: {format_value_func(other_value)} ({sign}{pct_change:.1f}%)")
+            
+            hover_text = f"<b>Branch: {baseline_branch} (Baseline)</b><br>"
+            hover_text += f"Value: {format_value_func(baseline_value)}<br>"
+            hover_text += f"<br><b>Other branches this day:</b><br>"
+            hover_text += "<br>".join(other_branches_info) if other_branches_info else "None"
+            
+            all_dates_data.append(hover_text)
+        
+        fig.add_trace(go.Scatter(
+            x=pd.to_datetime(daily_baseline['Date']),
+            y=daily_baseline[column_name],
+            mode='markers',
+            marker=dict(size=10, color=color or COLORS['primary']),
+            name='Daily First Reading',
+            customdata=all_dates_data,
+            hovertemplate='<b>Date: %{x|%Y-%m-%d}</b><br>%{customdata}<extra></extra>'
+        ))
+    
+    fig.update_layout(
+        title={'text': title, 'font': {'size': 18, 'color': COLORS['text'], 'family': 'system-ui'}},
+        xaxis_title='',
+        yaxis_title=yaxis_title,
+        height=400,
+        hovermode='closest',
+        paper_bgcolor=COLORS['background'],
+        plot_bgcolor=COLORS['background'],
+        font={'color': COLORS['text'], 'family': 'system-ui'},
+        xaxis=dict(gridcolor=COLORS['grid'], linecolor=COLORS['border'], showline=True),
+        yaxis=dict(gridcolor=COLORS['grid'], linecolor=COLORS['border'], showline=True, zeroline=False),
+        legend=dict(
+            orientation='h',
+            yanchor='bottom',
+            y=1.02,
+            xanchor='right',
+            x=1
+        ),
+        margin=dict(l=60, r=40, t=60, b=60)
+    )
+    
+    return fig
+
+def create_metrics_ripe_fruits_figure(selected_farms):
+    """Ripe Fruits Per Meter - baseline runs per date, separate lines per farm when both selected"""
+    # Filter by selected farms
+    df_local = df_metrics[df_metrics['Farm'].isin(selected_farms)].copy() if selected_farms else df_metrics.copy()
+    
+    df_local['Date'] = df_local['Start Datetime'].dt.date
+    df_baseline = df_local[df_local['Baseline Run?'] == 'TRUE'].copy()
+    
+    # Filter out zeros and NaN values
+    df_baseline = df_baseline[df_baseline['Ripe Fruits per meter'].notna()]
+    df_baseline = df_baseline[df_baseline['Ripe Fruits per meter'] > 0]
+    
+    fig = go.Figure()
+    
+    # If both farms are selected, show separate lines
+    if len(selected_farms) > 1:
+        farm_colors = {
+            'Costa': COLORS['primary'],
+            'H&A': COLORS['secondary']
+        }
+        
+        for farm in selected_farms:
+            farm_df = df_baseline[df_baseline['Farm'] == farm].copy()
+            daily_baseline = farm_df.groupby('Date').first().reset_index()
+            
+            # Create hover text
+            all_dates_data = []
+            for idx, row in daily_baseline.iterrows():
+                date = row['Date']
+                day_data = df_local[(df_local['Date'] == date) & (df_local['Farm'] == farm)].copy()
+                
+                baseline_branch = row['Branch']
+                baseline_value = row['Ripe Fruits per meter']
+                
+                other_branches_info = []
+                for _, other_row in day_data.iterrows():
+                    if other_row['Baseline Run?'] == 'TRUE':
+                        continue
+                    other_branch = other_row['Branch']
+                    other_value = other_row['Ripe Fruits per meter']
+                    
+                    if pd.notna(other_value) and other_value > 0:
+                        pct_change = ((other_value - baseline_value) / baseline_value * 100) if baseline_value != 0 else 0
+                        sign = '+' if pct_change >= 0 else ''
+                        other_branches_info.append(f"{other_branch}: {other_value:.2f} ({sign}{pct_change:.1f}%)")
+                
+                hover_text = f"<b>Farm: {farm}</b><br>"
+                hover_text += f"<b>Branch: {baseline_branch} (Baseline)</b><br>"
+                hover_text += f"Value: {baseline_value:.2f}<br>"
+                hover_text += f"<br><b>Other branches this day:</b><br>"
+                hover_text += "<br>".join(other_branches_info) if other_branches_info else "None"
+                
+                all_dates_data.append(hover_text)
+            
+            fig.add_trace(go.Scatter(
+                x=pd.to_datetime(daily_baseline['Date']),
+                y=daily_baseline['Ripe Fruits per meter'],
+                mode='markers',
+                marker=dict(size=10, color=farm_colors.get(farm, COLORS['primary'])),
+                name=farm,
+                customdata=all_dates_data,
+                hovertemplate='<b>Date: %{x|%Y-%m-%d}</b><br>%{customdata}<extra></extra>'
+            ))
+    else:
+        # Single farm view
+        daily_baseline = df_baseline.groupby('Date').first().reset_index()
+        
+        all_dates_data = []
+        for idx, row in daily_baseline.iterrows():
+            date = row['Date']
+            day_data = df_local[df_local['Date'] == date].copy()
+            
+            baseline_branch = row['Branch']
+            baseline_value = row['Ripe Fruits per meter']
+            
+            other_branches_info = []
+            for _, other_row in day_data.iterrows():
+                if other_row['Baseline Run?'] == 'TRUE':
+                    continue
+                other_branch = other_row['Branch']
+                other_value = other_row['Ripe Fruits per meter']
+                
+                if pd.notna(other_value) and other_value > 0:
+                    pct_change = ((other_value - baseline_value) / baseline_value * 100) if baseline_value != 0 else 0
+                    sign = '+' if pct_change >= 0 else ''
+                    other_branches_info.append(f"{other_branch}: {other_value:.2f} ({sign}{pct_change:.1f}%)")
+            
+            hover_text = f"<b>Branch: {baseline_branch} (Baseline)</b><br>"
+            hover_text += f"Value: {baseline_value:.2f}<br>"
+            hover_text += f"<br><b>Other branches this day:</b><br>"
+            hover_text += "<br>".join(other_branches_info) if other_branches_info else "None"
+            
+            all_dates_data.append(hover_text)
+        
+        fig.add_trace(go.Scatter(
+            x=pd.to_datetime(daily_baseline['Date']),
+            y=daily_baseline['Ripe Fruits per meter'],
+            mode='markers',
+            marker=dict(size=10, color=COLORS['primary']),
+            name='Daily First Reading',
+            customdata=all_dates_data,
+            hovertemplate='<b>Date: %{x|%Y-%m-%d}</b><br>%{customdata}<extra></extra>'
+        ))
     
     fig.update_layout(
         title={'text': 'Ripe Fruits Per Meter (Daily)', 'font': {'size': 18, 'color': COLORS['text'], 'family': 'system-ui'}},
@@ -797,6 +1065,13 @@ def create_metrics_ripe_fruits_figure(selected_farms):
         font={'color': COLORS['text'], 'family': 'system-ui'},
         xaxis=dict(gridcolor=COLORS['grid'], linecolor=COLORS['border'], showline=True),
         yaxis=dict(gridcolor=COLORS['grid'], linecolor=COLORS['border'], showline=True, zeroline=False),
+        legend=dict(
+            orientation='h',
+            yanchor='bottom',
+            y=1.02,
+            xanchor='right',
+            x=1
+        ),
         margin=dict(l=60, r=40, t=60, b=60)
     )
     
@@ -804,271 +1079,47 @@ def create_metrics_ripe_fruits_figure(selected_farms):
 
 def create_metrics_recall_figure(selected_farms):
     """Recall with Questionable - baseline run per date"""
-    # Filter by selected farms
-    df_local = df_metrics[df_metrics['Farm'].isin(selected_farms)].copy() if selected_farms else df_metrics.copy()
-    df_local['Date'] = df_local['Start Datetime'].dt.date
-    df_baseline = df_local[df_local['Baseline Run?'] == 'TRUE'].copy()
-    daily_baseline = df_baseline.groupby('Date').first().reset_index()
-    
-    # Filter out zeros and NaN values
-    daily_baseline = daily_baseline[daily_baseline['Recall w/ Questionable'].notna()]
-    daily_baseline = daily_baseline[daily_baseline['Recall w/ Questionable'] > 0]
-    
-    all_dates_data = []
-    for idx, row in daily_baseline.iterrows():
-        date = row['Date']
-        day_data = df_local[df_local['Date'] == date].copy()
-        
-        baseline_branch = row['Branch']
-        baseline_value = row['Recall w/ Questionable']
-        
-        other_branches_info = []
-        for _, other_row in day_data.iterrows():
-            if other_row['Baseline Run?'] == 'TRUE':
-                continue
-            other_branch = other_row['Branch']
-            other_value = other_row['Recall w/ Questionable']
-            
-            if pd.notna(other_value) and other_value > 0:
-                pct_change = ((other_value - baseline_value) / baseline_value * 100) if baseline_value != 0 else 0
-                sign = '+' if pct_change >= 0 else ''
-                other_branches_info.append(f"{other_branch}: {other_value:.2%} ({sign}{pct_change:.1f}%)")
-        
-        hover_text = f"<b>Branch: {baseline_branch} (Baseline)</b><br>"
-        hover_text += f"Value: {baseline_value:.2%}<br>"
-        hover_text += f"<br><b>Other branches this day:</b><br>"
-        hover_text += "<br>".join(other_branches_info) if other_branches_info else "None"
-        
-        all_dates_data.append(hover_text)
-    
-    fig = go.Figure()
-    
-    fig.add_trace(go.Scatter(
-        x=pd.to_datetime(daily_baseline['Date']),
-        y=daily_baseline['Recall w/ Questionable'],
-        mode='markers',
-        marker=dict(size=10, color=COLORS['secondary']),
-        name='Daily First Reading',
-        customdata=all_dates_data,
-        hovertemplate='<b>Date: %{x|%Y-%m-%d}</b><br>%{customdata}<extra></extra>'
-    ))
-    
-    fig.update_layout(
-        title={'text': 'Recall with Questionable (Daily)', 'font': {'size': 18, 'color': COLORS['text'], 'family': 'system-ui'}},
-        xaxis_title='',
-        yaxis_title='Recall',
-        height=400,
-        hovermode='closest',
-        paper_bgcolor=COLORS['background'],
-        plot_bgcolor=COLORS['background'],
-        font={'color': COLORS['text'], 'family': 'system-ui'},
-        xaxis=dict(gridcolor=COLORS['grid'], linecolor=COLORS['border'], showline=True),
-        yaxis=dict(gridcolor=COLORS['grid'], linecolor=COLORS['border'], showline=True, zeroline=False),
-        margin=dict(l=60, r=40, t=60, b=60)
+    return create_metrics_figure_helper(
+        selected_farms,
+        'Recall w/ Questionable',
+        'Recall with Questionable (Daily)',
+        'Recall',
+        lambda v: f"{v:.2%}",
+        COLORS['secondary']
     )
-    
-    return fig
 
 def create_metrics_precision_figure(selected_farms):
     """Precision with Questionable - baseline run per date"""
-    # Filter by selected farms
-    df_local = df_metrics[df_metrics['Farm'].isin(selected_farms)].copy() if selected_farms else df_metrics.copy()
-    df_local['Date'] = df_local['Start Datetime'].dt.date
-    df_baseline = df_local[df_local['Baseline Run?'] == 'TRUE'].copy()
-    daily_baseline = df_baseline.groupby('Date').first().reset_index()
-    
-    # Filter out zeros and NaN values
-    daily_baseline = daily_baseline[daily_baseline['Precision w/ Questionable'].notna()]
-    daily_baseline = daily_baseline[daily_baseline['Precision w/ Questionable'] > 0]
-    
-    all_dates_data = []
-    for idx, row in daily_baseline.iterrows():
-        date = row['Date']
-        day_data = df_local[df_local['Date'] == date].copy()
-        
-        baseline_branch = row['Branch']
-        baseline_value = row['Precision w/ Questionable']
-        
-        other_branches_info = []
-        for _, other_row in day_data.iterrows():
-            if other_row['Baseline Run?'] == 'TRUE':
-                continue
-            other_branch = other_row['Branch']
-            other_value = other_row['Precision w/ Questionable']
-            
-            if pd.notna(other_value) and other_value > 0:
-                pct_change = ((other_value - baseline_value) / baseline_value * 100) if baseline_value != 0 else 0
-                sign = '+' if pct_change >= 0 else ''
-                other_branches_info.append(f"{other_branch}: {other_value:.2%} ({sign}{pct_change:.1f}%)")
-        
-        hover_text = f"<b>Branch: {baseline_branch} (Baseline)</b><br>"
-        hover_text += f"Value: {baseline_value:.2%}<br>"
-        hover_text += f"<br><b>Other branches this day:</b><br>"
-        hover_text += "<br>".join(other_branches_info) if other_branches_info else "None"
-        
-        all_dates_data.append(hover_text)
-    
-    fig = go.Figure()
-    
-    fig.add_trace(go.Scatter(
-        x=pd.to_datetime(daily_baseline['Date']),
-        y=daily_baseline['Precision w/ Questionable'],
-        mode='markers',
-        marker=dict(size=10, color=COLORS['accent']),
-        name='Daily First Reading',
-        customdata=all_dates_data,
-        hovertemplate='<b>Date: %{x|%Y-%m-%d}</b><br>%{customdata}<extra></extra>'
-    ))
-    
-    fig.update_layout(
-        title={'text': 'Precision with Questionable (Daily)', 'font': {'size': 18, 'color': COLORS['text'], 'family': 'system-ui'}},
-        xaxis_title='',
-        yaxis_title='Precision',
-        height=400,
-        hovermode='closest',
-        paper_bgcolor=COLORS['background'],
-        plot_bgcolor=COLORS['background'],
-        font={'color': COLORS['text'], 'family': 'system-ui'},
-        xaxis=dict(gridcolor=COLORS['grid'], linecolor=COLORS['border'], showline=True),
-        yaxis=dict(gridcolor=COLORS['grid'], linecolor=COLORS['border'], showline=True, zeroline=False),
-        margin=dict(l=60, r=40, t=60, b=60)
+    return create_metrics_figure_helper(
+        selected_farms,
+        'Precision w/ Questionable',
+        'Precision with Questionable (Daily)',
+        'Precision',
+        lambda v: f"{v:.2%}",
+        COLORS['accent']
     )
-    
-    return fig
 
 def create_metrics_harvest_speed_figure(selected_farms):
     """Real Harvest Speed - baseline run per date"""
-    # Filter by selected farms
-    df_local = df_metrics[df_metrics['Farm'].isin(selected_farms)].copy() if selected_farms else df_metrics.copy()
-    df_local['Date'] = df_local['Start Datetime'].dt.date
-    df_baseline = df_local[df_local['Baseline Run?'] == 'TRUE'].copy()
-    daily_baseline = df_baseline.groupby('Date').first().reset_index()
-    
-    # Filter out zeros and NaN values
-    daily_baseline = daily_baseline[daily_baseline['Real Harvest Speed'].notna()]
-    daily_baseline = daily_baseline[daily_baseline['Real Harvest Speed'] > 0]
-    
-    all_dates_data = []
-    for idx, row in daily_baseline.iterrows():
-        date = row['Date']
-        day_data = df_local[df_local['Date'] == date].copy()
-        
-        baseline_branch = row['Branch']
-        baseline_value = row['Real Harvest Speed']
-        
-        other_branches_info = []
-        for _, other_row in day_data.iterrows():
-            if other_row['Baseline Run?'] == 'TRUE':
-                continue
-            other_branch = other_row['Branch']
-            other_value = other_row['Real Harvest Speed']
-            
-            if pd.notna(other_value) and other_value > 0:
-                pct_change = ((other_value - baseline_value) / baseline_value * 100) if baseline_value != 0 else 0
-                sign = '+' if pct_change >= 0 else ''
-                other_branches_info.append(f"{other_branch}: {other_value:.2f} ({sign}{pct_change:.1f}%)")
-        
-        hover_text = f"<b>Branch: {baseline_branch} (Baseline)</b><br>"
-        hover_text += f"Value: {baseline_value:.2f}<br>"
-        hover_text += f"<br><b>Other branches this day:</b><br>"
-        hover_text += "<br>".join(other_branches_info) if other_branches_info else "None"
-        
-        all_dates_data.append(hover_text)
-    
-    fig = go.Figure()
-    
-    fig.add_trace(go.Scatter(
-        x=pd.to_datetime(daily_baseline['Date']),
-        y=daily_baseline['Real Harvest Speed'],
-        mode='markers',
-        marker=dict(size=10, color=COLORS['primary']),
-        name='Daily First Reading',
-        customdata=all_dates_data,
-        hovertemplate='<b>Date: %{x|%Y-%m-%d}</b><br>%{customdata}<extra></extra>'
-    ))
-    
-    fig.update_layout(
-        title={'text': 'Real Harvest Speed (Daily)', 'font': {'size': 18, 'color': COLORS['text'], 'family': 'system-ui'}},
-        xaxis_title='',
-        yaxis_title='seconds/tomato',
-        height=400,
-        hovermode='closest',
-        paper_bgcolor=COLORS['background'],
-        plot_bgcolor=COLORS['background'],
-        font={'color': COLORS['text'], 'family': 'system-ui'},
-        xaxis=dict(gridcolor=COLORS['grid'], linecolor=COLORS['border'], showline=True),
-        yaxis=dict(gridcolor=COLORS['grid'], linecolor=COLORS['border'], showline=True, zeroline=False),
-        margin=dict(l=60, r=40, t=60, b=60)
+    return create_metrics_figure_helper(
+        selected_farms,
+        'Real Harvest Speed',
+        'Real Harvest Speed (Daily)',
+        'seconds/tomato',
+        lambda v: f"{v:.2f}",
+        COLORS['primary']
     )
-    
-    return fig
 
 def create_metrics_drop_rate_figure(selected_farms):
     """Drop Rate - baseline run per date"""
-    # Filter by selected farms
-    df_local = df_metrics[df_metrics['Farm'].isin(selected_farms)].copy() if selected_farms else df_metrics.copy()
-    df_local['Date'] = df_local['Start Datetime'].dt.date
-    df_baseline = df_local[df_local['Baseline Run?'] == 'TRUE'].copy()
-    daily_baseline = df_baseline.groupby('Date').first().reset_index()
-    
-    # Filter out zeros and NaN values
-    daily_baseline = daily_baseline[daily_baseline['Drop Rate'].notna()]
-    daily_baseline = daily_baseline[daily_baseline['Drop Rate'] > 0]
-    
-    all_dates_data = []
-    for idx, row in daily_baseline.iterrows():
-        date = row['Date']
-        day_data = df_local[df_local['Date'] == date].copy()
-        
-        baseline_branch = row['Branch']
-        baseline_value = row['Drop Rate']
-        
-        other_branches_info = []
-        for _, other_row in day_data.iterrows():
-            if other_row['Baseline Run?'] == 'TRUE':
-                continue
-            other_branch = other_row['Branch']
-            other_value = other_row['Drop Rate']
-            
-            if pd.notna(other_value) and other_value > 0:
-                pct_change = ((other_value - baseline_value) / baseline_value * 100) if baseline_value != 0 else 0
-                sign = '+' if pct_change >= 0 else ''
-                other_branches_info.append(f"{other_branch}: {other_value:.2%} ({sign}{pct_change:.1f}%)")
-        
-        hover_text = f"<b>Branch: {baseline_branch} (Baseline)</b><br>"
-        hover_text += f"Value: {baseline_value:.2%}<br>"
-        hover_text += f"<br><b>Other branches this day:</b><br>"
-        hover_text += "<br>".join(other_branches_info) if other_branches_info else "None"
-        
-        all_dates_data.append(hover_text)
-    
-    fig = go.Figure()
-    
-    fig.add_trace(go.Scatter(
-        x=pd.to_datetime(daily_baseline['Date']),
-        y=daily_baseline['Drop Rate'],
-        mode='markers',
-        marker=dict(size=10, color=COLORS['secondary']),
-        name='Daily First Reading',
-        customdata=all_dates_data,
-        hovertemplate='<b>Date: %{x|%Y-%m-%d}</b><br>%{customdata}<extra></extra>'
-    ))
-    
-    fig.update_layout(
-        title={'text': 'Drop Rate (Daily)', 'font': {'size': 18, 'color': COLORS['text'], 'family': 'system-ui'}},
-        xaxis_title='',
-        yaxis_title='Drop Rate',
-        height=400,
-        hovermode='closest',
-        paper_bgcolor=COLORS['background'],
-        plot_bgcolor=COLORS['background'],
-        font={'color': COLORS['text'], 'family': 'system-ui'},
-        xaxis=dict(gridcolor=COLORS['grid'], linecolor=COLORS['border'], showline=True),
-        yaxis=dict(gridcolor=COLORS['grid'], linecolor=COLORS['border'], showline=True, zeroline=False),
-        margin=dict(l=60, r=40, t=60, b=60)
+    return create_metrics_figure_helper(
+        selected_farms,
+        'Drop Rate',
+        'Drop Rate (Daily)',
+        'Drop Rate',
+        lambda v: f"{v:.2%}",
+        COLORS['secondary']
     )
-    
-    return fig
 
 # Run the app
 if __name__ == '__main__':
