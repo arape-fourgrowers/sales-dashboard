@@ -5,6 +5,13 @@ from dash import Dash, html, dcc, callback, Output, Input
 import plotly.express as px
 import plotly.graph_objects as go
 from datetime import datetime, timedelta
+import pg8000.native
+
+# Database configuration
+DB_HOST = 'fourgrowers-analytics-db.clswl6o06h7g.us-east-2.rds.amazonaws.com'
+DB_NAME = 'postgres'
+DB_PASS = 'FourGrowers2026!'
+DB_USER = 'analyticsuser'
 
 # Google Sheet configuration
 COSTA_SHEET_ID = "1pblkbokP6SP-YYeUIxvYZ9L0BJqcbFGjdY5DJRxbLb4"
@@ -48,6 +55,77 @@ PLOTLY_TEMPLATE = {
         }
     }
 }
+
+def get_db_connection():
+    """Connect to database"""
+    try:
+        conn = pg8000.native.Connection(
+            user=DB_USER,
+            password=DB_PASS,
+            host=DB_HOST,
+            database=DB_NAME,
+            timeout=5
+        )
+        return conn
+    except Exception as e:
+        print(f"⚠️  DB Connection Error: {e}")
+        return None
+
+def load_fruit_analytics_data(farm_id='costa'):
+    """Load Ripe Fruits per Meter from database using harvest events"""
+    print(f"Loading Fruit Analytics data for {farm_id}...")
+    
+    try:
+        conn = get_db_connection()
+        if not conn:
+            print(f"⚠️  Skipping Fruit Analytics - database connection failed")
+            return pd.DataFrame()
+        
+        query = """
+        WITH events AS (
+            SELECT
+                DATE("timestamp") AS harvest_date,
+                "timestamp" AS ts,
+                MAX(("data"->>'x (m)')::float) AS event_distance,
+                SUM(CASE WHEN ("data"->>'Ripeness')::float >= 4 THEN 1 ELSE 0 END) AS ripe_count
+            FROM farm_events
+            WHERE farm_id = :farm_id
+                AND event_type = 'harvest'
+                AND ("data"->>'x (m)') IS NOT NULL
+                AND ("data"->>'Ripeness') IS NOT NULL
+            GROUP BY DATE("timestamp"), "timestamp"
+        )
+        SELECT
+            harvest_date,
+            SUM(event_distance) AS total_distance,
+            SUM(ripe_count) AS total_ripe
+        FROM events
+        GROUP BY harvest_date
+        ORDER BY harvest_date
+        """
+        
+        result = conn.run(query, farm_id=farm_id)
+        conn.close()
+        
+        if not result:
+            print(f"⚠️  No Fruit Analytics data found for {farm_id}")
+            return pd.DataFrame()
+        
+        # Convert to DataFrame
+        df = pd.DataFrame(result, columns=['harvest_date', 'total_distance', 'total_ripe'])
+        
+        # Calculate ripe fruits per meter
+        df['ripe_fruits_per_meter'] = df['total_ripe'] / df['total_distance']
+        
+        # Convert date to datetime
+        df['harvest_date'] = pd.to_datetime(df['harvest_date'])
+        
+        print(f"✅ Loaded {len(df)} days of Fruit Analytics data for {farm_id}")
+        return df
+        
+    except Exception as e:
+        print(f"⚠️  Error loading Fruit Analytics data for {farm_id}: {e}")
+        return pd.DataFrame()
 
 def load_data(sheet_id, sheet_name):
     """Load data from Google Sheets"""
@@ -195,6 +273,11 @@ df_ha['Farm'] = 'H&A'
 
 # Combine both farms
 df = pd.concat([df_costa, df_ha], ignore_index=True, sort=False)
+
+# Load Fruit Analytics data from database
+print("Loading Fruit Analytics data from database...")
+df_fruit_analytics_costa = load_fruit_analytics_data('costa')
+df_fruit_analytics_ha = load_fruit_analytics_data('h&a')
 
 print("Loading Metrics Testing data...")
 df_metrics_costa = load_metrics_testing_data(COSTA_SHEET_ID, COSTA_METRICS_SHEET)
@@ -488,7 +571,7 @@ def create_ripe_fruits_figure(selected_farms):
     
     fig = go.Figure()
     
-    # If both farms are selected, show separate lines
+    # Add CH Sheet data (original Google Sheets data)
     if len(selected_farms) > 1:
         farm_colors = {
             'Costa': COLORS['primary'],
@@ -504,7 +587,7 @@ def create_ripe_fruits_figure(selected_farms):
                 x=farm_df['Start Datetime'],
                 y=farm_df['Rolling_Avg'],
                 mode='lines',
-                name=farm,
+                name=f'{farm} - CH Sheet',
                 line=dict(color=farm_colors.get(farm, COLORS['primary']), width=3)
             ))
     else:
@@ -515,11 +598,62 @@ def create_ripe_fruits_figure(selected_farms):
             x=chart_df['Start Datetime'],
             y=chart_df['Rolling_Avg'],
             mode='lines',
-            name='7-Day Average',
+            name='CH Sheet',
             line=dict(color=COLORS['primary'], width=3),
             fill='tozeroy',
             fillcolor='rgba(45, 106, 79, 0.1)'
         ))
+    
+    # Add Fruit Analytics data (from database)
+    if len(selected_farms) > 1:
+        # Show both farms' Fruit Analytics
+        for farm in selected_farms:
+            if farm == 'Costa' and not df_fruit_analytics_costa.empty:
+                fa_df = df_fruit_analytics_costa.copy()
+                fa_df['Rolling_Avg'] = fa_df['ripe_fruits_per_meter'].rolling(window=7, min_periods=1).mean()
+                
+                fig.add_trace(go.Scatter(
+                    x=fa_df['harvest_date'],
+                    y=fa_df['Rolling_Avg'],
+                    mode='lines',
+                    name='Costa - Fruit Analytics',
+                    line=dict(color=COLORS['primary'], width=2, dash='dash')
+                ))
+            elif farm == 'H&A' and not df_fruit_analytics_ha.empty:
+                fa_df = df_fruit_analytics_ha.copy()
+                fa_df['Rolling_Avg'] = fa_df['ripe_fruits_per_meter'].rolling(window=7, min_periods=1).mean()
+                
+                fig.add_trace(go.Scatter(
+                    x=fa_df['harvest_date'],
+                    y=fa_df['Rolling_Avg'],
+                    mode='lines',
+                    name='H&A - Fruit Analytics',
+                    line=dict(color=COLORS['secondary'], width=2, dash='dash')
+                ))
+    else:
+        # Single farm view
+        if 'Costa' in selected_farms and not df_fruit_analytics_costa.empty:
+            fa_df = df_fruit_analytics_costa.copy()
+            fa_df['Rolling_Avg'] = fa_df['ripe_fruits_per_meter'].rolling(window=7, min_periods=1).mean()
+            
+            fig.add_trace(go.Scatter(
+                x=fa_df['harvest_date'],
+                y=fa_df['Rolling_Avg'],
+                mode='lines',
+                name='Fruit Analytics',
+                line=dict(color='#d95f02', width=2, dash='dash')
+            ))
+        elif 'H&A' in selected_farms and not df_fruit_analytics_ha.empty:
+            fa_df = df_fruit_analytics_ha.copy()
+            fa_df['Rolling_Avg'] = fa_df['ripe_fruits_per_meter'].rolling(window=7, min_periods=1).mean()
+            
+            fig.add_trace(go.Scatter(
+                x=fa_df['harvest_date'],
+                y=fa_df['Rolling_Avg'],
+                mode='lines',
+                name='Fruit Analytics',
+                line=dict(color='#d95f02', width=2, dash='dash')
+            ))
     
     # Set default x-axis range to last 4 weeks
     fig.update_xaxes(range=[default_start, max_date])
