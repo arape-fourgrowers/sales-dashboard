@@ -64,7 +64,7 @@ def get_db_connection():
             password=DB_PASS,
             host=DB_HOST,
             database=DB_NAME,
-            timeout=5
+            timeout=60
         )
         return conn
     except Exception as e:
@@ -81,29 +81,24 @@ def load_fruit_analytics_data(farm_id='costa'):
             print(f"⚠️  Skipping Fruit Analytics - database connection failed")
             return pd.DataFrame()
         
+        # Very simple aggregated query with tight date filter
         query = """
-        WITH events AS (
-            SELECT
-                DATE("timestamp") AS harvest_date,
-                "timestamp" AS ts,
-                MAX(("data"->>'x (m)')::float) AS event_distance,
-                SUM(CASE WHEN ("data"->>'Ripeness')::float >= 4 THEN 1 ELSE 0 END) AS ripe_count
-            FROM farm_events
-            WHERE farm_id = :farm_id
-                AND event_type = 'harvest'
-                AND ("data"->>'x (m)') IS NOT NULL
-                AND ("data"->>'Ripeness') IS NOT NULL
-            GROUP BY DATE("timestamp"), "timestamp"
-        )
         SELECT
-            harvest_date,
-            SUM(event_distance) AS total_distance,
-            SUM(ripe_count) AS total_ripe
-        FROM events
-        GROUP BY harvest_date
-        ORDER BY harvest_date
+            DATE("timestamp") AS harvest_date,
+            COUNT(*) FILTER (WHERE ("data"->>'Ripeness')::float >= 4) AS total_ripe,
+            SUM(("data"->>'x (m)')::float) AS total_distance
+        FROM farm_events
+        WHERE farm_id = :farm_id
+            AND event_type = 'harvest'
+            AND "timestamp" >= CURRENT_DATE - INTERVAL '60 days'
+        GROUP BY DATE("timestamp")
+        HAVING SUM(("data"->>'x (m)')::float) > 0
+        ORDER BY harvest_date DESC
+        LIMIT 60
         """
         
+        # Set a statement timeout
+        conn.run("SET statement_timeout = 15000")  # 15 seconds
         result = conn.run(query, farm_id=farm_id)
         conn.close()
         
@@ -112,7 +107,14 @@ def load_fruit_analytics_data(farm_id='costa'):
             return pd.DataFrame()
         
         # Convert to DataFrame
-        df = pd.DataFrame(result, columns=['harvest_date', 'total_distance', 'total_ripe'])
+        df = pd.DataFrame(result, columns=['harvest_date', 'total_ripe', 'total_distance'])
+        
+        # Convert to numeric types (handle Decimal objects from database)
+        df['total_distance'] = pd.to_numeric(df['total_distance'], errors='coerce')
+        df['total_ripe'] = pd.to_numeric(df['total_ripe'], errors='coerce')
+        
+        # Remove rows with zero or null distance
+        df = df[df['total_distance'] > 0].copy()
         
         # Calculate ripe fruits per meter
         df['ripe_fruits_per_meter'] = df['total_ripe'] / df['total_distance']
@@ -120,11 +122,14 @@ def load_fruit_analytics_data(farm_id='costa'):
         # Convert date to datetime
         df['harvest_date'] = pd.to_datetime(df['harvest_date'])
         
+        # Sort by date ascending for proper time series
+        df = df.sort_values('harvest_date')
+        
         print(f"✅ Loaded {len(df)} days of Fruit Analytics data for {farm_id}")
         return df
         
     except Exception as e:
-        print(f"⚠️  Error loading Fruit Analytics data for {farm_id}: {e}")
+        print(f"⚠️  Error loading Fruit Analytics data for {farm_id}: {str(e)[:100]}")
         return pd.DataFrame()
 
 def load_data(sheet_id, sheet_name):
