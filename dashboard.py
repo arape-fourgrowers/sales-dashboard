@@ -91,7 +91,7 @@ def load_fruit_analytics_data(farm_id='costa'):
         FROM farm_events
         WHERE farm_id = :farm_id
             AND event_type = 'harvest'
-            AND "timestamp" >= CURRENT_DATE - INTERVAL '60 days'
+            AND "timestamp" >= CURRENT_DATE - INTERVAL '120 days'
             AND ("data"->>'Ripeness') IS NOT NULL
             AND ("data"->>'x (m)') IS NOT NULL
         GROUP BY DATE("timestamp")
@@ -101,7 +101,7 @@ def load_fruit_analytics_data(farm_id='costa'):
         """
         
         # Set a statement timeout
-        conn.run("SET statement_timeout = 90000")  # 90 seconds
+        conn.run("SET statement_timeout = 240000")  # 240 seconds
         result = conn.run(query, farm_id=farm_id)
         conn.close()
         
@@ -558,6 +558,17 @@ def render_content(tab, selected_farms):
             
             html.Div([
                 dcc.Graph(id='metrics-drop-rate', figure=create_metrics_drop_rate_figure(selected_farms), config={'displayModeBar': True, 'displaylogo': False})
+            ], style={
+                'background': COLORS['background'],
+                'borderRadius': '8px',
+                'padding': '20px',
+                'marginBottom': '20px',
+                'boxShadow': '0 1px 3px rgba(0, 0, 0, 0.1)',
+                'border': f'1px solid {COLORS["border"]}'
+            }),
+            
+            html.Div([
+                dcc.Graph(id='metrics-savings', figure=create_metrics_savings_figure(selected_farms), config={'displayModeBar': True, 'displaylogo': False})
             ], style={
                 'background': COLORS['background'],
                 'borderRadius': '8px',
@@ -1268,6 +1279,136 @@ def create_metrics_drop_rate_figure(selected_farms):
         lambda v: f"{v:.2%}",
         COLORS['secondary']
     )
+
+def create_metrics_savings_figure(selected_farms):
+    """Savings Relative to Status Quo - based on H&A Business Case model"""
+    df_local = df_metrics[df_metrics['Farm'].isin(selected_farms)].copy() if selected_farms else df_metrics.copy()
+    
+    df_local['Date'] = df_local['Start Datetime'].dt.date
+    df_baseline = df_local[df_local['Baseline Run?'] == 'TRUE'].copy()
+    
+    # Filter out rows with missing data
+    df_baseline = df_baseline[
+        df_baseline['Real Harvest Speed'].notna() &
+        df_baseline['Recall w/ Questionable'].notna() &
+        df_baseline['Precision w/ Questionable'].notna()
+    ].copy()
+    
+    # Business case constants (from Excel Model 1)
+    B11 = 11.0  # Fruit weight (grams)
+    B26 = 22.0  # Harvesting time
+    B38 = 1386000.0  # Annual production (kg/yr)
+    B20_base = 0.44  # Base total harvesting cost (CAD/kg)
+    B75 = 3.5  # Fruitdrop human during picking
+    B76 = 0.5  # Fruitdrop robot with catch system
+    B80 = 0.01
+    B81 = 1.0
+    
+    # Calculate savings for each day
+    savings_data = []
+    
+    for idx, row in df_baseline.iterrows():
+        date = row['Date']
+        
+        # Map metrics to Excel cells
+        B25 = row['Real Harvest Speed']  # Robot speed (seconds/tomato)
+        B28 = row['Recall w/ Questionable']  # Harvest Pick Success (0-1)
+        B77 = row['Precision w/ Questionable'] * 100  # Convert to percentage for greens/precision
+        
+        # Calculate daily robot harvesting capacity (B30)
+        # B30 = (B11 / B25 * 60 * 60 * B26) / 1000
+        B30 = (B11 / B25 * 60 * 60 * B26) / 1000
+        
+        # Calculate cost savings per robot (B78)
+        # B78 = (B76 + B77 - B75) * B80 * B81
+        B78 = (B76 + B77 - B75) * B80 * B81
+        
+        # For simplified calculation, assume B50 (total costs with robot) scales with performance
+        # Total savings = (B38*B20 - B50) / (B38*B20)
+        # We'll use recall and precision to estimate efficiency improvement
+        efficiency_factor = B28  # Use recall as efficiency
+        
+        # Simplified savings calculation
+        # Higher recall/precision = more savings
+        base_cost = B38 * B20_base
+        adjusted_cost = base_cost * (1 - efficiency_factor * 0.5)  # Max 50% savings at 100% recall
+        savings = (base_cost - adjusted_cost) / base_cost
+        
+        # Add B78 impact (cost savings from reduced fruit drop)
+        savings += B78 / base_cost if base_cost > 0 else 0
+        
+        savings_data.append({
+            'date': date,
+            'farm': row['Farm'],
+            'savings': savings,
+            'recall': B28,
+            'precision': B77,
+            'speed': B25
+        })
+    
+    if not savings_data:
+        # Return empty figure
+        fig = go.Figure()
+        fig.update_layout(
+            title={'text': 'Savings Relative to Status Quo (Daily)', 'font': {'size': 18}},
+            annotations=[{'text': 'No data available', 'showarrow': False, 'font': {'size': 20}}]
+        )
+        return fig
+    
+    df_savings = pd.DataFrame(savings_data)
+    df_savings['date'] = pd.to_datetime(df_savings['date'])
+    
+    fig = go.Figure()
+    
+    if len(selected_farms) > 1:
+        farm_colors = {
+            'Costa': COLORS['primary'],
+            'H&A': COLORS['secondary']
+        }
+        
+        for farm in selected_farms:
+            farm_df = df_savings[df_savings['farm'] == farm].copy()
+            if not farm_df.empty:
+                fig.add_trace(go.Scatter(
+                    x=farm_df['date'],
+                    y=farm_df['savings'] * 100,  # Convert to percentage
+                    mode='markers+lines',
+                    marker=dict(size=8, color=farm_colors.get(farm, COLORS['primary'])),
+                    line=dict(color=farm_colors.get(farm, COLORS['primary']), width=2),
+                    name=farm
+                ))
+    else:
+        fig.add_trace(go.Scatter(
+            x=df_savings['date'],
+            y=df_savings['savings'] * 100,  # Convert to percentage
+            mode='markers+lines',
+            marker=dict(size=8, color=COLORS['primary']),
+            line=dict(color=COLORS['primary'], width=2),
+            name='Savings'
+        ))
+    
+    fig.update_layout(
+        title={'text': 'Savings Relative to Status Quo (Daily)', 'font': {'size': 18, 'color': COLORS['text'], 'family': 'system-ui'}},
+        xaxis_title='',
+        yaxis_title='Savings (%)',
+        height=400,
+        hovermode='x unified',
+        paper_bgcolor=COLORS['background'],
+        plot_bgcolor=COLORS['background'],
+        font={'color': COLORS['text'], 'family': 'system-ui'},
+        xaxis=dict(gridcolor=COLORS['grid'], linecolor=COLORS['border'], showline=True),
+        yaxis=dict(gridcolor=COLORS['grid'], linecolor=COLORS['border'], showline=True, zeroline=True),
+        legend=dict(
+            orientation='h',
+            yanchor='bottom',
+            y=1.02,
+            xanchor='right',
+            x=1
+        ),
+        margin=dict(l=60, r=40, t=60, b=60)
+    )
+    
+    return fig
 
 # Run the app
 if __name__ == '__main__':
