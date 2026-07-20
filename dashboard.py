@@ -285,8 +285,8 @@ df = pd.concat([df_costa, df_ha], ignore_index=True, sort=False)
 
 # Load Fruit Analytics data from database
 print("Loading Fruit Analytics data from database...")
-df_fruit_analytics_costa = load_fruit_analytics_data('costa')
-df_fruit_analytics_ha = load_fruit_analytics_data('h&a')
+#df_fruit_analytics_costa = load_fruit_analytics_data('costa')
+#df_fruit_analytics_ha = load_fruit_analytics_data('h&a')
 
 print("Loading Metrics Testing data...")
 df_metrics_costa = load_metrics_testing_data(COSTA_SHEET_ID, COSTA_METRICS_SHEET)
@@ -1294,15 +1294,22 @@ def create_metrics_savings_figure(selected_farms):
         df_baseline['Precision w/ Questionable'].notna()
     ].copy()
     
-    # Business case constants (from Excel Model 1)
-    B11 = 11.0  # Fruit weight (grams)
-    B26 = 22.0  # Harvesting time
-    B38 = 1386000.0  # Annual production (kg/yr)
-    B20_base = 0.44  # Base total harvesting cost (CAD/kg)
-    B75 = 3.5  # Fruitdrop human during picking
-    B76 = 0.5  # Fruitdrop robot with catch system
-    B80 = 0.01
-    B81 = 1.0
+    
+    fruit_weight = 11.0 
+    weeks_harvested = 40  
+    person_harvesting_rate=50
+    hourly_wage=22
+    harvesting_cost_per_kg = hourly_wage / person_harvesting_rate
+    annual_production = 33
+    farm_size=4.2 #ha
+    annual_production_total= farm_size*annual_production*10000 
+    additional_human_costs=0
+    total_harvesting_cost_per_kg = harvesting_cost_per_kg + additional_human_costs
+    total_farm_human_cost= total_harvesting_cost_per_kg * annual_production_total
+    robots_per_farm=5.114
+    equivalent_harvesting_cost_human_per_robot= total_farm_human_cost/robots_per_farm
+    robot_hours_per_day=22
+   
     
     # Calculate savings for each day
     savings_data = []
@@ -1311,39 +1318,75 @@ def create_metrics_savings_figure(selected_farms):
         date = row['Date']
         
         # Map metrics to Excel cells
-        B25 = row['Real Harvest Speed']  # Robot speed (seconds/tomato)
-        B28 = row['Recall w/ Questionable']  # Harvest Pick Success (0-1)
-        B77 = row['Precision w/ Questionable'] * 100  # Convert to percentage for greens/precision
-        
+        harvesting_speed = row['Real Harvest Speed']  
+        recall_with_questionable = row['Recall w/ Questionable']  
+        precision_with_questionable = row['Precision w/ Questionable']   
         # Calculate daily robot harvesting capacity (B30)
         # B30 = (B11 / B25 * 60 * 60 * B26) / 1000
-        B30 = (B11 / B25 * 60 * 60 * B26) / 1000
+        daily_robot_capacity_kg=(fruit_weight/harvesting_speed*60*60*robot_hours_per_day)/1000
+        weekly_robot_capacity_kg=daily_robot_capacity_kg*7
+        daily_human_sweeping=(daily_robot_capacity_kg/recall_with_questionable)*(1/recall_with_questionable)
+        weekly_human_sweeping=daily_human_sweeping*7
+        total_robot_harvested=weekly_robot_capacity_kg*weeks_harvested
+        total_human_swept=weekly_human_sweeping*weeks_harvested
+        total_harvested=total_robot_harvested+total_human_swept
+
+        sweeping_speed_reduction=.25
+        sweeping_cost=total_harvesting_cost_per_kg*(1+sweeping_speed_reduction)
+
+        robot_cost=95000
+
+        total_human_sweeping_cost=total_human_swept*sweeping_cost
+        operator_wage=22
+        robots_overseen=5.1
+        daily_operator_time=6
+        annual_operator_cost=(operator_wage*daily_operator_time*7*weeks_harvested)/robots_overseen
+        print('daily_human_sweeping',daily_human_sweeping)
+        print('recall_with_questionable',recall_with_questionable)
+        print('weekly_robot_capacity_kg',weekly_robot_capacity_kg)
+        print('total_robot_harvested',total_robot_harvested)
+        print('total_human_swept',total_human_swept)
+        print('sweeping_cost',sweeping_cost)
+        print('total_human_sweeping_cost',total_human_sweeping_cost)
+        print('robot_cost',robot_cost)
+        print('annual_operator_cost',annual_operator_cost)
+        total_costs_robot_per_year=total_human_sweeping_cost+robot_cost+annual_operator_cost
         
-        # Calculate cost savings per robot (B78)
-        # B78 = (B76 + B77 - B75) * B80 * B81
-        B78 = (B76 + B77 - B75) * B80 * B81
-        
-        # For simplified calculation, assume B50 (total costs with robot) scales with performance
-        # Total savings = (B38*B20 - B50) / (B38*B20)
-        # We'll use recall and precision to estimate efficiency improvement
-        efficiency_factor = B28  # Use recall as efficiency
-        
-        # Simplified savings calculation
-        # Higher recall/precision = more savings
-        base_cost = B38 * B20_base
-        adjusted_cost = base_cost * (1 - efficiency_factor * 0.5)  # Max 50% savings at 100% recall
-        savings = (base_cost - adjusted_cost) / base_cost
-        
-        # Add B78 impact (cost savings from reduced fruit drop)
-        savings += B78 / base_cost if base_cost > 0 else 0
-        
+
+        human_fruit_drop=3.5/100
+        robot_fruit_drop=.5/100
+        robot_greens_lost=total_harvested*(robot_fruit_drop+(1-precision_with_questionable))
+        human_greens_lost=total_harvested*(human_fruit_drop)
+
+
+        market_price_per_kg=5
+        discounting_factor=.8
+
+        robot_opportunity_costs_of_greens_lost=robot_greens_lost*market_price_per_kg*discounting_factor
+        human_opportunity_costs_of_greens_lost=human_greens_lost*market_price_per_kg*discounting_factor 
+        print('robot_opportunity_costs_of_greens_lost',robot_opportunity_costs_of_greens_lost)
+        print('human_opportunity_costs_of_greens_lost',human_opportunity_costs_of_greens_lost)
+
+        print('total_costs_robot_per_year',total_costs_robot_per_year)
+        print('equivalent_harvesting_cost_human_per_robot',equivalent_harvesting_cost_human_per_robot)
+
+        total_costs_robot_per_year_with_waste=total_costs_robot_per_year+robot_opportunity_costs_of_greens_lost
+        total_costs_human_per_year_with_waste=equivalent_harvesting_cost_human_per_robot+human_opportunity_costs_of_greens_lost
+
+        percentage_savings=(total_costs_human_per_year_with_waste-total_costs_robot_per_year_with_waste)/total_costs_human_per_year_with_waste
+
+
+
+
+
+
         savings_data.append({
             'date': date,
             'farm': row['Farm'],
-            'savings': savings,
-            'recall': B28,
-            'precision': B77,
-            'speed': B25
+            'savings': percentage_savings,
+            'recall': recall_with_questionable,
+            'precision': precision_with_questionable,
+            'speed': harvesting_speed
         })
     
     if not savings_data:
