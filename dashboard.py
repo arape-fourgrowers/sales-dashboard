@@ -252,6 +252,11 @@ def load_metrics_testing_data(sheet_id, sheet_name):
             df[col] = df[col].str.replace('%', '')
             df[col] = pd.to_numeric(df[col], errors='coerce') / 100
     
+    # Standardize 'Real Harvest Speed' column name
+    # H&A uses 'Real Harvest Speed w/ unripe', Costa uses 'Real Harvest Speed'
+    if 'Real Harvest Speed w/ unripe' in df.columns and 'Real Harvest Speed' not in df.columns:
+        df['Real Harvest Speed'] = df['Real Harvest Speed w/ unripe']
+    
     # Convert other numeric columns
     numeric_cols = [
         'Ripe Fruits per meter',
