@@ -108,8 +108,8 @@ def load_fruit_analytics_data(farm_id='costa'):
         LIMIT 60
         """
         
-        # Set a statement timeout
-        conn.run("SET statement_timeout = 240000")  # 240 seconds
+        # Set a statement timeout (30 seconds for production)
+        conn.run("SET statement_timeout = 30000")  # 30 seconds
         result = conn.run(query, farm_id=farm_id)
         conn.close()
         
@@ -142,6 +142,8 @@ def load_fruit_analytics_data(farm_id='costa'):
         
     except Exception as e:
         print(f"⚠️  Error loading Fruit Analytics data for {farm_id}: {str(e)[:200]}")
+        import traceback
+        traceback.print_exc()
         return pd.DataFrame()
 
 def load_data(sheet_id, sheet_name):
@@ -368,24 +370,53 @@ df_fruit_analytics_costa = load_fruit_analytics_data('costa')
 df_fruit_analytics_ha = load_fruit_analytics_data('h&a')
 
 print("Loading Metrics Testing data...")
-df_metrics_costa = load_metrics_testing_data(COSTA_SHEET_ID, COSTA_METRICS_SHEET)
-print(f"Loaded {len(df_metrics_costa)} rows from Costa Metrics Testing")
-df_metrics_costa['Farm'] = 'Costa'
 
-df_metrics_ha = load_metrics_testing_data(HA_SHEET_ID, HA_METRICS_SHEET)
-print(f"Loaded {len(df_metrics_ha)} rows from H&A Metrics Testing")
-df_metrics_ha['Farm'] = 'H&A'
+# Load metrics with error handling
+metrics_dfs = []
 
-df_metrics_sundrop = load_metrics_testing_data(SUNDROP_SHEET_ID, SUNDROP_METRICS_SHEET)
-print(f"Loaded {len(df_metrics_sundrop)} rows from Sundrop Metrics Testing")
-df_metrics_sundrop['Farm'] = 'Sundrop'
+try:
+    df_metrics_costa = load_metrics_testing_data(COSTA_SHEET_ID, COSTA_METRICS_SHEET)
+    print(f"✅ Loaded {len(df_metrics_costa)} rows from Costa Metrics Testing")
+    df_metrics_costa['Farm'] = 'Costa'
+    metrics_dfs.append(df_metrics_costa)
+except Exception as e:
+    print(f"⚠️  Error loading Costa Metrics Testing: {e}")
+    df_metrics_costa = pd.DataFrame()
 
-df_metrics_westburg = load_metrics_testing_data(WESTBURG_SHEET_ID, WESTBURG_METRICS_SHEET)
-print(f"Loaded {len(df_metrics_westburg)} rows from Westburg Metrics Testing")
-df_metrics_westburg['Farm'] = 'Westburg'
+try:
+    df_metrics_ha = load_metrics_testing_data(HA_SHEET_ID, HA_METRICS_SHEET)
+    print(f"✅ Loaded {len(df_metrics_ha)} rows from H&A Metrics Testing")
+    df_metrics_ha['Farm'] = 'H&A'
+    metrics_dfs.append(df_metrics_ha)
+except Exception as e:
+    print(f"⚠️  Error loading H&A Metrics Testing: {e}")
+    df_metrics_ha = pd.DataFrame()
+
+try:
+    df_metrics_sundrop = load_metrics_testing_data(SUNDROP_SHEET_ID, SUNDROP_METRICS_SHEET)
+    print(f"✅ Loaded {len(df_metrics_sundrop)} rows from Sundrop Metrics Testing")
+    df_metrics_sundrop['Farm'] = 'Sundrop'
+    metrics_dfs.append(df_metrics_sundrop)
+except Exception as e:
+    print(f"⚠️  Error loading Sundrop Metrics Testing: {e}")
+    df_metrics_sundrop = pd.DataFrame()
+
+try:
+    df_metrics_westburg = load_metrics_testing_data(WESTBURG_SHEET_ID, WESTBURG_METRICS_SHEET)
+    print(f"✅ Loaded {len(df_metrics_westburg)} rows from Westburg Metrics Testing")
+    df_metrics_westburg['Farm'] = 'Westburg'
+    metrics_dfs.append(df_metrics_westburg)
+except Exception as e:
+    print(f"⚠️  Error loading Westburg Metrics Testing: {e}")
+    df_metrics_westburg = pd.DataFrame()
 
 # Combine all farms metrics
-df_metrics = pd.concat([df_metrics_costa, df_metrics_ha, df_metrics_sundrop, df_metrics_westburg], ignore_index=True, sort=False)
+if metrics_dfs:
+    df_metrics = pd.concat(metrics_dfs, ignore_index=True, sort=False)
+    print(f"✅ Combined metrics: {len(df_metrics)} total rows")
+else:
+    print("⚠️  No metrics data loaded - creating empty dataframe")
+    df_metrics = pd.DataFrame()
 
 # Calculate default date range (last 4 weeks)
 max_date = df['Start Datetime'].max()
@@ -1694,10 +1725,55 @@ def create_fruit_weight_figure(selected_farms):
 # Metrics Testing Chart Functions
 def create_metrics_figure_helper(selected_farms, column_name, title, yaxis_title, format_value_func, color=None):
     """Helper function to create metrics figures with farm separation"""
+    # Handle empty metrics data
+    if df_metrics.empty:
+        fig = go.Figure()
+        fig.update_layout(
+            title={'text': title, 'font': {'size': 18, 'color': COLORS['text'], 'family': 'system-ui'}},
+            annotations=[{
+                'text': 'No metrics data available',
+                'showarrow': False,
+                'font': {'size': 16, 'color': COLORS['text_secondary']},
+                'xref': 'paper',
+                'yref': 'paper',
+                'x': 0.5,
+                'y': 0.5
+            }],
+            paper_bgcolor=COLORS['background'],
+            plot_bgcolor=COLORS['background'],
+            height=400
+        )
+        return fig
+    
     df_local = df_metrics[df_metrics['Farm'].isin(selected_farms)].copy() if selected_farms else df_metrics.copy()
     
+    # Handle missing required columns
+    if 'Start Datetime' not in df_local.columns or column_name not in df_local.columns:
+        fig = go.Figure()
+        fig.update_layout(
+            title={'text': title, 'font': {'size': 18, 'color': COLORS['text'], 'family': 'system-ui'}},
+            annotations=[{
+                'text': f'Missing required data columns',
+                'showarrow': False,
+                'font': {'size': 16, 'color': COLORS['text_secondary']},
+                'xref': 'paper',
+                'yref': 'paper',
+                'x': 0.5,
+                'y': 0.5
+            }],
+            paper_bgcolor=COLORS['background'],
+            plot_bgcolor=COLORS['background'],
+            height=400
+        )
+        return fig
+    
     df_local['Date'] = df_local['Start Datetime'].dt.date
-    df_baseline = df_local[df_local['Baseline Run?'] == 'TRUE'].copy()
+    
+    # Handle missing Baseline Run column
+    if 'Baseline Run?' in df_local.columns:
+        df_baseline = df_local[df_local['Baseline Run?'] == 'TRUE'].copy()
+    else:
+        df_baseline = df_local.copy()
     
     # Filter out zeros and NaN values
     df_baseline = df_baseline[df_baseline[column_name].notna()]
@@ -1819,11 +1895,56 @@ def create_metrics_figure_helper(selected_farms, column_name, title, yaxis_title
 
 def create_metrics_ripe_fruits_figure(selected_farms):
     """Ripe Fruits Per Meter - baseline runs per date, separate lines per farm when both selected"""
+    # Handle empty metrics data
+    if df_metrics.empty:
+        fig = go.Figure()
+        fig.update_layout(
+            title={'text': 'Ripe Fruits Per Meter (Daily)', 'font': {'size': 18, 'color': COLORS['text'], 'family': 'system-ui'}},
+            annotations=[{
+                'text': 'No metrics data available',
+                'showarrow': False,
+                'font': {'size': 16, 'color': COLORS['text_secondary']},
+                'xref': 'paper',
+                'yref': 'paper',
+                'x': 0.5,
+                'y': 0.5
+            }],
+            paper_bgcolor=COLORS['background'],
+            plot_bgcolor=COLORS['background'],
+            height=400
+        )
+        return fig
+    
     # Filter by selected farms
     df_local = df_metrics[df_metrics['Farm'].isin(selected_farms)].copy() if selected_farms else df_metrics.copy()
     
+    # Handle missing required columns
+    if 'Start Datetime' not in df_local.columns or 'Ripe Fruits per meter' not in df_local.columns:
+        fig = go.Figure()
+        fig.update_layout(
+            title={'text': 'Ripe Fruits Per Meter (Daily)', 'font': {'size': 18, 'color': COLORS['text'], 'family': 'system-ui'}},
+            annotations=[{
+                'text': 'Missing required data columns',
+                'showarrow': False,
+                'font': {'size': 16, 'color': COLORS['text_secondary']},
+                'xref': 'paper',
+                'yref': 'paper',
+                'x': 0.5,
+                'y': 0.5
+            }],
+            paper_bgcolor=COLORS['background'],
+            plot_bgcolor=COLORS['background'],
+            height=400
+        )
+        return fig
+    
     df_local['Date'] = df_local['Start Datetime'].dt.date
-    df_baseline = df_local[df_local['Baseline Run?'] == 'TRUE'].copy()
+    
+    # Handle missing Baseline Run column
+    if 'Baseline Run?' in df_local.columns:
+        df_baseline = df_local[df_local['Baseline Run?'] == 'TRUE'].copy()
+    else:
+        df_baseline = df_local.copy()
     
     # Filter out zeros and NaN values
     df_baseline = df_baseline[df_baseline['Ripe Fruits per meter'].notna()]
@@ -1992,10 +2113,57 @@ def create_metrics_drop_rate_figure(selected_farms):
 
 def create_metrics_savings_figure(selected_farms):
     """Savings Relative to Status Quo - based on H&A Business Case model"""
+    # Handle empty metrics data
+    if df_metrics.empty:
+        fig = go.Figure()
+        fig.update_layout(
+            title={'text': 'Savings Relative to Status Quo (Daily)', 'font': {'size': 18, 'color': COLORS['text'], 'family': 'system-ui'}},
+            annotations=[{
+                'text': 'No metrics data available',
+                'showarrow': False,
+                'font': {'size': 16, 'color': COLORS['text_secondary']},
+                'xref': 'paper',
+                'yref': 'paper',
+                'x': 0.5,
+                'y': 0.5
+            }],
+            paper_bgcolor=COLORS['background'],
+            plot_bgcolor=COLORS['background'],
+            height=400
+        )
+        return fig
+    
     df_local = df_metrics[df_metrics['Farm'].isin(selected_farms)].copy() if selected_farms else df_metrics.copy()
     
+    # Handle missing required columns
+    required_cols = ['Start Datetime', 'Real Harvest Speed', 'Recall w/ Questionable', 'Precision w/ Questionable']
+    missing_cols = [col for col in required_cols if col not in df_local.columns]
+    if missing_cols:
+        fig = go.Figure()
+        fig.update_layout(
+            title={'text': 'Savings Relative to Status Quo (Daily)', 'font': {'size': 18, 'color': COLORS['text'], 'family': 'system-ui'}},
+            annotations=[{
+                'text': f'Missing required columns: {", ".join(missing_cols)}',
+                'showarrow': False,
+                'font': {'size': 16, 'color': COLORS['text_secondary']},
+                'xref': 'paper',
+                'yref': 'paper',
+                'x': 0.5,
+                'y': 0.5
+            }],
+            paper_bgcolor=COLORS['background'],
+            plot_bgcolor=COLORS['background'],
+            height=400
+        )
+        return fig
+    
     df_local['Date'] = df_local['Start Datetime'].dt.date
-    df_baseline = df_local[df_local['Baseline Run?'] == 'TRUE'].copy()
+    
+    # Handle missing Baseline Run column
+    if 'Baseline Run?' in df_local.columns:
+        df_baseline = df_local[df_local['Baseline Run?'] == 'TRUE'].copy()
+    else:
+        df_baseline = df_local.copy()
     
     # Filter out rows with missing data
     df_baseline = df_baseline[
