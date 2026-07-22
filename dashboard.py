@@ -180,6 +180,7 @@ def load_data(sheet_id, sheet_name):
     numeric_cols = [
         'Ripe Fruits per Meter',
         'Robot Harvest Speed',
+        'Robot Harvest Speed (kg/hr)',
         'AMA Number',
         'Harvest \nWeight (kg)\nRobot Scale',
         'Average Fruit Weight (g)',
@@ -256,11 +257,34 @@ def load_metrics_testing_data(sheet_id, sheet_name):
     numeric_cols = [
         'Ripe Fruits per meter',
         'Real Harvest Speed',
+        'Robot Harvest Speed (kg / hr)',
     ]
     
     for col in numeric_cols:
         if col in df.columns:
             df[col] = pd.to_numeric(df[col], errors='coerce')
+    
+    # Parse time duration columns (Downtime and Harvest Duration)
+    # Format is H:MM:SS or HH:MM:SS
+    time_cols = ['Downtime (estimate)', 'Harvest Duration']
+    for col in time_cols:
+        if col in df.columns:
+            def parse_duration(time_str):
+                """Parse H:MM:SS format to hours as float"""
+                if not time_str or time_str in ['', ' ', '#VALUE!', '#DIV/0!']:
+                    return None
+                try:
+                    parts = str(time_str).split(':')
+                    if len(parts) == 3:
+                        hours = float(parts[0])
+                        minutes = float(parts[1])
+                        seconds = float(parts[2])
+                        return hours + minutes/60 + seconds/3600
+                    return None
+                except:
+                    return None
+            
+            df[col + '_hours'] = df[col].apply(parse_duration)
     
     # Remove rows with invalid dates
     df = df.dropna(subset=['Start Datetime'])
@@ -625,29 +649,33 @@ def calculate_client_metrics(farm_name):
     
     metrics = {}
     
-    # Speed (Metrics Test) - Real Harvest Speed converted to kg/hr
-    # Formula: (fruit_weight_g / speed_sec_per_tomato * 3600) / 1000
-    if 'Real Harvest Speed' in farm_metrics.columns and len(farm_metrics) > 0:
-        valid_speeds = farm_metrics[farm_metrics['Real Harvest Speed'].notna() & (farm_metrics['Real Harvest Speed'] > 0)]
+    # Speed (Metrics Test) - use Robot Harvest Speed (kg / hr) directly
+    speed_col = 'Robot Harvest Speed (kg / hr)'
+    if speed_col in farm_metrics.columns and len(farm_metrics) > 0:
+        valid_speeds = farm_metrics[farm_metrics[speed_col].notna() & (farm_metrics[speed_col] > 0)]
         if len(valid_speeds) > 0:
-            avg_speed_sec = valid_speeds['Real Harvest Speed'].mean()
-            # Assume average fruit weight of 11g
-            metrics['speed_metrics'] = (11.0 / avg_speed_sec * 3600) / 1000
-            metrics['speed_metrics_trend'] = valid_speeds['Real Harvest Speed'].values
+            metrics['speed_metrics'] = valid_speeds[speed_col].mean()
+            metrics['speed_metrics_trend'] = valid_speeds[speed_col].values
         else:
             metrics['speed_metrics'] = None
             metrics['speed_metrics_trend'] = []
+    else:
+        metrics['speed_metrics'] = None
+        metrics['speed_metrics_trend'] = []
     
-    # Speed (Full Row) - from Robot Harvest Speed in CH sheet, also convert to kg/hr
-    if 'Robot Harvest Speed' in farm_ch.columns and len(farm_ch) > 0:
-        valid_speeds = farm_ch[farm_ch['Robot Harvest Speed'].notna() & (farm_ch['Robot Harvest Speed'] > 0)]
+    # Speed (Full Row) - use Robot Harvest Speed (kg/hr) from CH sheet
+    speed_col_ch = 'Robot Harvest Speed (kg/hr)'
+    if speed_col_ch in farm_ch.columns and len(farm_ch) > 0:
+        valid_speeds = farm_ch[farm_ch[speed_col_ch].notna() & (farm_ch[speed_col_ch] > 0)]
         if len(valid_speeds) > 0:
-            avg_speed_sec = valid_speeds['Robot Harvest Speed'].mean()
-            metrics['speed_full_row'] = (11.0 / avg_speed_sec * 3600) / 1000
-            metrics['speed_full_row_trend'] = valid_speeds['Robot Harvest Speed'].values
+            metrics['speed_full_row'] = valid_speeds[speed_col_ch].mean()
+            metrics['speed_full_row_trend'] = valid_speeds[speed_col_ch].values
         else:
             metrics['speed_full_row'] = None
             metrics['speed_full_row_trend'] = []
+    else:
+        metrics['speed_full_row'] = None
+        metrics['speed_full_row_trend'] = []
     
     # Recall (Metrics Test)
     if 'Recall w/ Questionable' in farm_metrics.columns and len(farm_metrics) > 0:
@@ -658,6 +686,9 @@ def calculate_client_metrics(farm_name):
         else:
             metrics['recall_metrics'] = None
             metrics['recall_metrics_trend'] = []
+    else:
+        metrics['recall_metrics'] = None
+        metrics['recall_metrics_trend'] = []
     
     # Precision (Metrics Test)
     if 'Precision w/ Questionable' in farm_metrics.columns and len(farm_metrics) > 0:
@@ -668,17 +699,34 @@ def calculate_client_metrics(farm_name):
         else:
             metrics['precision_metrics'] = None
             metrics['precision_metrics_trend'] = []
+    else:
+        metrics['precision_metrics'] = None
+        metrics['precision_metrics_trend'] = []
     
-    # Reliability - calculated as (1 - Drop Rate)
-    if 'Drop Rate' in farm_metrics.columns and len(farm_metrics) > 0:
-        valid_drop = farm_metrics[farm_metrics['Drop Rate'].notna()]
-        if len(valid_drop) > 0:
-            avg_drop = valid_drop['Drop Rate'].mean()
-            metrics['reliability'] = 1 - avg_drop
-            metrics['reliability_trend'] = (1 - valid_drop['Drop Rate']).values
+    # Reliability - calculated as Uptime = Harvest Duration / (Harvest Duration + Downtime)
+    downtime_col = 'Downtime (estimate)_hours'
+    duration_col = 'Harvest Duration_hours'
+    
+    if downtime_col in farm_metrics.columns and duration_col in farm_metrics.columns and len(farm_metrics) > 0:
+        # Filter for valid data
+        valid_data = farm_metrics[
+            farm_metrics[downtime_col].notna() & 
+            farm_metrics[duration_col].notna() & 
+            (farm_metrics[duration_col] > 0)
+        ].copy()
+        
+        if len(valid_data) > 0:
+            # Calculate uptime for each run
+            valid_data['uptime'] = valid_data[duration_col] / (valid_data[duration_col] + valid_data[downtime_col])
+            # Average uptime across all runs
+            metrics['reliability'] = valid_data['uptime'].mean()
+            metrics['reliability_trend'] = valid_data['uptime'].values
         else:
             metrics['reliability'] = None
             metrics['reliability_trend'] = []
+    else:
+        metrics['reliability'] = None
+        metrics['reliability_trend'] = []
     
     return metrics
 
@@ -775,7 +823,7 @@ def create_client_scorecard_tab(selected_farms):
         goal_speed_m = goal_set['speed_metrics']
         if speed_m:
             color = get_stoplight_color(speed_m, goal_speed_m)
-            trend_text = f"Last 6 weeks: {', '.join([f'{(11.0/v*3600/1000):.1f}' for v in metrics.get('speed_metrics_trend', [])[-5:]])}"
+            trend_text = f"Last 6 weeks: {', '.join([f'{v:.1f}' for v in metrics.get('speed_metrics_trend', [])[-5:]])} kg/hr"
             cells.append(html.Td(
                 html.Div([
                     html.Span('● ', style={'color': color, 'fontSize': '24px', 'marginRight': '8px'}),
@@ -791,7 +839,7 @@ def create_client_scorecard_tab(selected_farms):
         goal_speed_f = goal_set['speed_full_row']
         if speed_f:
             color = get_stoplight_color(speed_f, goal_speed_f)
-            trend_text = f"Last 6 weeks: {', '.join([f'{(11.0/v*3600/1000):.1f}' for v in metrics.get('speed_full_row_trend', [])[-5:]])}"
+            trend_text = f"Last 6 weeks: {', '.join([f'{v:.1f}' for v in metrics.get('speed_full_row_trend', [])[-5:]])} kg/hr"
             cells.append(html.Td(
                 html.Div([
                     html.Span('● ', style={'color': color, 'fontSize': '24px', 'marginRight': '8px'}),
