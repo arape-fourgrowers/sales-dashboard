@@ -1854,16 +1854,24 @@ def create_metrics_figure_helper(selected_farms, column_name, title, yaxis_title
                 baseline_value = row[column_name]
                 
                 other_branches_info = []
-                for _, other_row in day_data.iterrows():
-                    if other_row['Baseline Run?'] == 'TRUE':
-                        continue
-                    other_branch = other_row['Branch']
-                    other_value = other_row[column_name]
-                    
-                    if pd.notna(other_value) and other_value > 0:
-                        pct_change = ((other_value - baseline_value) / baseline_value * 100) if baseline_value != 0 else 0
-                        sign = '+' if pct_change >= 0 else ''
-                        other_branches_info.append(f"{other_branch}: {format_value_func(other_value)} ({sign}{pct_change:.1f}%)")
+                # 1. Filter out invalid rows instantly using a boolean mask
+                valid_rows = day_data[
+                    (day_data['Baseline Run?'] != 'TRUE') & 
+                    (day_data[column_name].notna()) & 
+                    (day_data[column_name] > 0)
+                ]
+
+                # 2. Calculate percentage change for all valid rows at once (vectorized math)
+                if baseline_value != 0:
+                    pct_changes = ((valid_rows[column_name] - baseline_value) / baseline_value) * 100
+                else:
+                    # If baseline is 0, assign 0 to avoid division errors
+                    pct_changes = pd.Series(0.0, index=valid_rows.index)
+
+                # 3. Zip iterates through native Python types, bypassing Pandas overhead completely
+                for branch, val, pct in zip(valid_rows['Branch'], valid_rows[column_name], pct_changes):
+                    sign = '+' if pct >= 0 else ''
+                    other_branches_info.append(f"{branch}: {format_value_func(val)} ({sign}{pct:.1f}%)")
                 
                 hover_text = f"<b>Farm: {farm}</b><br>"
                 hover_text += f"<b>Branch: {baseline_branch} (Baseline)</b><br>"
