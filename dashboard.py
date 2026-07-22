@@ -752,7 +752,7 @@ def calculate_client_metrics(farm_name):
         metrics['precision_metrics'] = None
         metrics['precision_metrics_trend'] = []
     
-    # Reliability - calculated as Uptime = Harvest Duration / (Harvest Duration + Downtime)
+    # Reliability - calculated as Uptime = Total Harvest Duration / (Total Harvest Duration + Total Downtime) per week
     # Use CONTINUOUS HARVESTING data (not Metrics Testing)
     downtime_col = 'Downtime _hours'
     duration_col = 'Harvest Duration_hours'
@@ -766,12 +766,23 @@ def calculate_client_metrics(farm_name):
         ].copy()
         
         if len(valid_data) > 0:
-            # Calculate uptime for each run
-            valid_data['uptime'] = valid_data[duration_col] / (valid_data[duration_col] + valid_data[downtime_col])
-            # Take MOST RECENT value
-            metrics['reliability'] = valid_data['uptime'].iloc[-1]
-            # Keep last 10 values for trend (oldest to newest)
-            metrics['reliability_trend'] = valid_data['uptime'].values[-10:]
+            # Add week column for grouping
+            valid_data['Week'] = valid_data['Start Datetime'].dt.to_period('W')
+            
+            # Calculate weekly totals
+            weekly_totals = valid_data.groupby('Week').agg({
+                duration_col: 'sum',
+                downtime_col: 'sum'
+            })
+            
+            # Calculate weekly uptime: Total Duration / (Total Duration + Total Downtime)
+            weekly_totals['uptime'] = weekly_totals[duration_col] / (weekly_totals[duration_col] + weekly_totals[downtime_col])
+            
+            # Take MOST RECENT week's uptime
+            metrics['reliability'] = weekly_totals['uptime'].iloc[-1]
+            
+            # Keep last 10 weeks for trend (oldest to newest)
+            metrics['reliability_trend'] = weekly_totals['uptime'].values[-10:]
         else:
             metrics['reliability'] = None
             metrics['reliability_trend'] = []
