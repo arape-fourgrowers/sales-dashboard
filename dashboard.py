@@ -452,7 +452,7 @@ else:
     print("⚠️  Using performance dashboard date range for metrics (no metrics data available)")
 
 # Initialize the Dash app
-app = Dash(__name__)
+app = Dash(__name__, suppress_callback_exceptions=True)
 
 # Define the layout
 app.layout = html.Div([

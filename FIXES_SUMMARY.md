@@ -48,6 +48,16 @@ if 'Start Datetime' not in df_local.columns:
 **Problem**: Any exception in metrics tab rendering crashes callback
 **Fix**: Wrapped entire tab-2 rendering in try/catch with error display
 
+### 7. **Callback Exceptions for Dynamically Generated Components** ⭐ KEY FIX
+**Problem**: Business Case Calculator inputs don't exist in initial layout, causing callback errors
+**Root Cause**: Calculator tab (tab-4) is rendered dynamically, but callback is registered at startup
+**Error Message**: "ID not found in layout" for all calculator inputs
+**Impact**: Locally shows errors but works; on Render may cause more severe failures
+**Fix**: Added `suppress_callback_exceptions=True` to Dash app initialization:
+```python
+app = Dash(__name__, suppress_callback_exceptions=True)
+```
+
 ## Testing Results
 
 **Before Fixes:**
