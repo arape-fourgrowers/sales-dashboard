@@ -632,14 +632,24 @@ def render_content(tab, selected_farms):
 def calculate_client_metrics(farm_name):
     """Calculate current metrics for a farm from the last 6 weeks of data"""
     from datetime import datetime, timedelta
+    import numpy as np
     
     cutoff = datetime.now() - timedelta(weeks=6)
     
-    # Get Metrics Testing data for this farm
+    # Get Metrics Testing data for this farm - ONLY BASELINE RUNS
     if farm_name == 'Costa':
-        farm_metrics = df_metrics_costa[df_metrics_costa['Start Datetime'] >= cutoff].copy()
+        farm_metrics = df_metrics_costa[
+            (df_metrics_costa['Start Datetime'] >= cutoff) &
+            (df_metrics_costa['Baseline Run?'] == 'TRUE')
+        ].copy()
     else:  # H&A
-        farm_metrics = df_metrics_ha[df_metrics_ha['Start Datetime'] >= cutoff].copy()
+        farm_metrics = df_metrics_ha[
+            (df_metrics_ha['Start Datetime'] >= cutoff) &
+            (df_metrics_ha['Baseline Run?'] == 'TRUE')
+        ].copy()
+    
+    # Sort by date (newest at bottom)
+    farm_metrics = farm_metrics.sort_values('Start Datetime')
     
     # Get Continuous Harvesting data for full row metrics
     if farm_name == 'Costa':
@@ -647,15 +657,20 @@ def calculate_client_metrics(farm_name):
     else:
         farm_ch = df_ha[df_ha['Start Datetime'] >= cutoff].copy()
     
+    # Sort by date
+    farm_ch = farm_ch.sort_values('Start Datetime')
+    
     metrics = {}
     
-    # Speed (Metrics Test) - use Robot Harvest Speed (kg / hr) directly
+    # Speed (Metrics Test) - use Robot Harvest Speed (kg / hr) directly from BASELINE RUNS ONLY
     speed_col = 'Robot Harvest Speed (kg / hr)'
     if speed_col in farm_metrics.columns and len(farm_metrics) > 0:
         valid_speeds = farm_metrics[farm_metrics[speed_col].notna() & (farm_metrics[speed_col] > 0)]
         if len(valid_speeds) > 0:
+            # Take mean of all baseline runs in last 6 weeks
             metrics['speed_metrics'] = valid_speeds[speed_col].mean()
-            metrics['speed_metrics_trend'] = valid_speeds[speed_col].values
+            # Keep last 5 values for trend (newest at end)
+            metrics['speed_metrics_trend'] = valid_speeds[speed_col].values[-5:]
         else:
             metrics['speed_metrics'] = None
             metrics['speed_metrics_trend'] = []
@@ -663,13 +678,22 @@ def calculate_client_metrics(farm_name):
         metrics['speed_metrics'] = None
         metrics['speed_metrics_trend'] = []
     
-    # Speed (Full Row) - use Robot Harvest Speed (kg/hr) from CH sheet
+    # Speed (Full Row) - aggregate by week and take weekly averages from CH sheet
     speed_col_ch = 'Robot Harvest Speed (kg/hr)'
     if speed_col_ch in farm_ch.columns and len(farm_ch) > 0:
-        valid_speeds = farm_ch[farm_ch[speed_col_ch].notna() & (farm_ch[speed_col_ch] > 0)]
+        valid_speeds = farm_ch[farm_ch[speed_col_ch].notna() & (farm_ch[speed_col_ch] > 0)].copy()
         if len(valid_speeds) > 0:
-            metrics['speed_full_row'] = valid_speeds[speed_col_ch].mean()
-            metrics['speed_full_row_trend'] = valid_speeds[speed_col_ch].values
+            # Add week column for grouping
+            valid_speeds['Week'] = valid_speeds['Start Datetime'].dt.to_period('W')
+            
+            # Calculate weekly averages
+            weekly_avg = valid_speeds.groupby('Week')[speed_col_ch].mean()
+            
+            # Overall average across all weeks
+            metrics['speed_full_row'] = weekly_avg.mean()
+            
+            # Keep last 5 weeks for trend (newest at end)
+            metrics['speed_full_row_trend'] = weekly_avg.values[-5:]
         else:
             metrics['speed_full_row'] = None
             metrics['speed_full_row_trend'] = []
@@ -677,12 +701,13 @@ def calculate_client_metrics(farm_name):
         metrics['speed_full_row'] = None
         metrics['speed_full_row_trend'] = []
     
-    # Recall (Metrics Test)
+    # Recall (Metrics Test) - BASELINE RUNS ONLY
     if 'Recall w/ Questionable' in farm_metrics.columns and len(farm_metrics) > 0:
         valid_recall = farm_metrics[farm_metrics['Recall w/ Questionable'].notna()]
         if len(valid_recall) > 0:
             metrics['recall_metrics'] = valid_recall['Recall w/ Questionable'].mean()
-            metrics['recall_metrics_trend'] = valid_recall['Recall w/ Questionable'].values
+            # Keep last 5 values for trend (newest at end)
+            metrics['recall_metrics_trend'] = valid_recall['Recall w/ Questionable'].values[-5:]
         else:
             metrics['recall_metrics'] = None
             metrics['recall_metrics_trend'] = []
@@ -690,12 +715,13 @@ def calculate_client_metrics(farm_name):
         metrics['recall_metrics'] = None
         metrics['recall_metrics_trend'] = []
     
-    # Precision (Metrics Test)
+    # Precision (Metrics Test) - BASELINE RUNS ONLY
     if 'Precision w/ Questionable' in farm_metrics.columns and len(farm_metrics) > 0:
         valid_precision = farm_metrics[farm_metrics['Precision w/ Questionable'].notna()]
         if len(valid_precision) > 0:
             metrics['precision_metrics'] = valid_precision['Precision w/ Questionable'].mean()
-            metrics['precision_metrics_trend'] = valid_precision['Precision w/ Questionable'].values
+            # Keep last 5 values for trend (newest at end)
+            metrics['precision_metrics_trend'] = valid_precision['Precision w/ Questionable'].values[-5:]
         else:
             metrics['precision_metrics'] = None
             metrics['precision_metrics_trend'] = []
@@ -704,6 +730,7 @@ def calculate_client_metrics(farm_name):
         metrics['precision_metrics_trend'] = []
     
     # Reliability - calculated as Uptime = Harvest Duration / (Harvest Duration + Downtime)
+    # BASELINE RUNS ONLY
     downtime_col = 'Downtime (estimate)_hours'
     duration_col = 'Harvest Duration_hours'
     
@@ -718,9 +745,10 @@ def calculate_client_metrics(farm_name):
         if len(valid_data) > 0:
             # Calculate uptime for each run
             valid_data['uptime'] = valid_data[duration_col] / (valid_data[duration_col] + valid_data[downtime_col])
-            # Average uptime across all runs
+            # Average uptime across all baseline runs
             metrics['reliability'] = valid_data['uptime'].mean()
-            metrics['reliability_trend'] = valid_data['uptime'].values
+            # Keep last 5 values for trend (newest at end)
+            metrics['reliability_trend'] = valid_data['uptime'].values[-5:]
         else:
             metrics['reliability'] = None
             metrics['reliability_trend'] = []
@@ -823,7 +851,7 @@ def create_client_scorecard_tab(selected_farms):
         goal_speed_m = goal_set['speed_metrics']
         if speed_m:
             color = get_stoplight_color(speed_m, goal_speed_m)
-            trend_text = f"Last 6 weeks: {', '.join([f'{v:.1f}' for v in metrics.get('speed_metrics_trend', [])[-5:]])} kg/hr"
+            trend_text = f"Last 5 baseline runs: {', '.join([f'{v:.1f}' for v in metrics.get('speed_metrics_trend', [])])} kg/hr"
             cells.append(html.Td(
                 html.Div([
                     html.Span('● ', style={'color': color, 'fontSize': '24px', 'marginRight': '8px'}),
@@ -839,7 +867,7 @@ def create_client_scorecard_tab(selected_farms):
         goal_speed_f = goal_set['speed_full_row']
         if speed_f:
             color = get_stoplight_color(speed_f, goal_speed_f)
-            trend_text = f"Last 6 weeks: {', '.join([f'{v:.1f}' for v in metrics.get('speed_full_row_trend', [])[-5:]])} kg/hr"
+            trend_text = f"Last 5 weeks (avg): {', '.join([f'{v:.1f}' for v in metrics.get('speed_full_row_trend', [])])} kg/hr"
             cells.append(html.Td(
                 html.Div([
                     html.Span('● ', style={'color': color, 'fontSize': '24px', 'marginRight': '8px'}),
@@ -855,7 +883,7 @@ def create_client_scorecard_tab(selected_farms):
         if recall_m:
             # Use green if > 70%
             color = '#4caf50' if recall_m >= 0.70 else ('#ffeb3b' if recall_m >= 0.60 else '#f44336')
-            trend_text = f"Last 6 weeks: {', '.join([f'{v:.1%}' for v in metrics.get('recall_metrics_trend', [])[-5:]])}"
+            trend_text = f"Last 5 baseline runs: {', '.join([f'{v:.1%}' for v in metrics.get('recall_metrics_trend', [])])}"
             cells.append(html.Td(
                 html.Div([
                     html.Span('● ', style={'color': color, 'fontSize': '24px', 'marginRight': '8px'}),
@@ -885,7 +913,7 @@ def create_client_scorecard_tab(selected_farms):
         goal_precision = goal_set['precision_metrics']
         if precision_m:
             color = get_stoplight_color(precision_m, goal_precision)
-            trend_text = f"Last 6 weeks: {', '.join([f'{v:.1%}' for v in metrics.get('precision_metrics_trend', [])[-5:]])}"
+            trend_text = f"Last 5 baseline runs: {', '.join([f'{v:.1%}' for v in metrics.get('precision_metrics_trend', [])])}"
             cells.append(html.Td(
                 html.Div([
                     html.Span('● ', style={'color': color, 'fontSize': '24px', 'marginRight': '8px'}),
@@ -915,7 +943,7 @@ def create_client_scorecard_tab(selected_farms):
         goal_reliability = goal_set['reliability']
         if reliability:
             color = get_stoplight_color(reliability, goal_reliability)
-            trend_text = f"Last 6 weeks: {', '.join([f'{v:.1%}' for v in metrics.get('reliability_trend', [])[-5:]])}"
+            trend_text = f"Last 5 baseline runs: {', '.join([f'{v:.1%}' for v in metrics.get('reliability_trend', [])])}"
             cells.append(html.Td(
                 html.Div([
                     html.Span('● ', style={'color': color, 'fontSize': '24px', 'marginRight': '8px'}),
