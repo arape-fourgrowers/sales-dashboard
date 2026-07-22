@@ -252,11 +252,6 @@ def load_metrics_testing_data(sheet_id, sheet_name):
             df[col] = df[col].str.replace('%', '')
             df[col] = pd.to_numeric(df[col], errors='coerce') / 100
     
-    # Standardize 'Real Harvest Speed' column name
-    # H&A uses 'Real Harvest Speed w/ unripe', Costa uses 'Real Harvest Speed'
-    if 'Real Harvest Speed w/ unripe' in df.columns and 'Real Harvest Speed' not in df.columns:
-        df['Real Harvest Speed'] = df['Real Harvest Speed w/ unripe']
-    
     # Convert other numeric columns
     numeric_cols = [
         'Ripe Fruits per meter',
@@ -290,8 +285,8 @@ df = pd.concat([df_costa, df_ha], ignore_index=True, sort=False)
 
 # Load Fruit Analytics data from database
 print("Loading Fruit Analytics data from database...")
-#df_fruit_analytics_costa = load_fruit_analytics_data('costa')
-#df_fruit_analytics_ha = load_fruit_analytics_data('h&a')
+df_fruit_analytics_costa = load_fruit_analytics_data('costa')
+df_fruit_analytics_ha = load_fruit_analytics_data('h&a')
 
 print("Loading Metrics Testing data...")
 df_metrics_costa = load_metrics_testing_data(COSTA_SHEET_ID, COSTA_METRICS_SHEET)
@@ -400,16 +395,6 @@ app.layout = html.Div([
                 'color': COLORS['primary']
             }),
             dcc.Tab(label='Metrics Testing', value='tab-2', style={
-                'padding': '12px 24px',
-                'fontWeight': '500',
-                'borderBottom': f'3px solid transparent'
-            }, selected_style={
-                'padding': '12px 24px',
-                'fontWeight': '600',
-                'borderBottom': f'3px solid {COLORS["primary"]}',
-                'color': COLORS['primary']
-            }),
-            dcc.Tab(label='Business Case Calculator', value='tab-3', style={
                 'padding': '12px 24px',
                 'fontWeight': '500',
                 'borderBottom': f'3px solid transparent'
@@ -593,123 +578,6 @@ def render_content(tab, selected_farms):
                 'border': f'1px solid {COLORS["border"]}'
             }),
         ], style={'padding': '32px 40px', 'maxWidth': '1400px', 'margin': '0 auto', 'background': COLORS['surface']})
-    
-    elif tab == 'tab-3':
-        return html.Div([
-            html.H2("Business Case Calculator", style={
-                'fontSize': '24px',
-                'fontWeight': '600',
-                'color': COLORS['primary'],
-                'marginBottom': '20px'
-            }),
-            
-            html.P("Adjust the parameters below to calculate savings relative to status quo:", style={
-                'fontSize': '14px',
-                'color': COLORS['text_secondary'],
-                'marginBottom': '30px'
-            }),
-            
-            # Input grid
-            html.Div([
-                # Column 1
-                html.Div([
-                    html.Div([
-                        html.Label("Fruit Weight (g)", style={'fontWeight': '600', 'marginBottom': '8px', 'display': 'block'}),
-                        dcc.Input(id='input-fruit-weight', type='number', value=11.0, step=0.1, 
-                                 style={'width': '100%', 'padding': '8px', 'borderRadius': '4px', 'border': f'1px solid {COLORS["border"]}'})
-                    ], style={'marginBottom': '20px'}),
-                    
-                    html.Div([
-                        html.Label("Harvesting Time (hrs)", style={'fontWeight': '600', 'marginBottom': '8px', 'display': 'block'}),
-                        dcc.Input(id='input-harvest-time', type='number', value=22.0, step=0.5,
-                                 style={'width': '100%', 'padding': '8px', 'borderRadius': '4px', 'border': f'1px solid {COLORS["border"]}'})
-                    ], style={'marginBottom': '20px'}),
-                    
-                    html.Div([
-                        html.Label("Annual Production (kg/yr)", style={'fontWeight': '600', 'marginBottom': '8px', 'display': 'block'}),
-                        dcc.Input(id='input-annual-production', type='number', value=1386000.0, step=1000,
-                                 style={'width': '100%', 'padding': '8px', 'borderRadius': '4px', 'border': f'1px solid {COLORS["border"]}'})
-                    ], style={'marginBottom': '20px'}),
-                    
-                    html.Div([
-                        html.Label("Base Harvesting Cost (CAD/kg)", style={'fontWeight': '600', 'marginBottom': '8px', 'display': 'block'}),
-                        dcc.Input(id='input-base-cost', type='number', value=0.44, step=0.01,
-                                 style={'width': '100%', 'padding': '8px', 'borderRadius': '4px', 'border': f'1px solid {COLORS["border"]}'})
-                    ], style={'marginBottom': '20px'}),
-                ], style={'flex': '1', 'marginRight': '20px'}),
-                
-                # Column 2
-                html.Div([
-                    html.Div([
-                        html.Label("Robot Speed (sec/tomato)", style={'fontWeight': '600', 'marginBottom': '8px', 'display': 'block'}),
-                        dcc.Input(id='input-robot-speed', type='number', value=1.0, step=0.1,
-                                 style={'width': '100%', 'padding': '8px', 'borderRadius': '4px', 'border': f'1px solid {COLORS["border"]}'})
-                    ], style={'marginBottom': '20px'}),
-                    
-                    html.Div([
-                        html.Label("Recall (0-1)", style={'fontWeight': '600', 'marginBottom': '8px', 'display': 'block'}),
-                        dcc.Input(id='input-recall', type='number', value=0.9, min=0, max=1, step=0.01,
-                                 style={'width': '100%', 'padding': '8px', 'borderRadius': '4px', 'border': f'1px solid {COLORS["border"]}'})
-                    ], style={'marginBottom': '20px'}),
-                    
-                    html.Div([
-                        html.Label("Precision (0-1)", style={'fontWeight': '600', 'marginBottom': '8px', 'display': 'block'}),
-                        dcc.Input(id='input-precision', type='number', value=0.10, min=0, max=1, step=0.01,
-                                 style={'width': '100%', 'padding': '8px', 'borderRadius': '4px', 'border': f'1px solid {COLORS["border"]}'})
-                    ], style={'marginBottom': '20px'}),
-                ], style={'flex': '1', 'marginRight': '20px'}),
-                
-                # Column 3
-                html.Div([
-                    html.Div([
-                        html.Label("Fruitdrop Human (%)", style={'fontWeight': '600', 'marginBottom': '8px', 'display': 'block'}),
-                        dcc.Input(id='input-fruitdrop-human', type='number', value=3.5, step=0.1,
-                                 style={'width': '100%', 'padding': '8px', 'borderRadius': '4px', 'border': f'1px solid {COLORS["border"]}'})
-                    ], style={'marginBottom': '20px'}),
-                    
-                    html.Div([
-                        html.Label("Fruitdrop Robot (%)", style={'fontWeight': '600', 'marginBottom': '8px', 'display': 'block'}),
-                        dcc.Input(id='input-fruitdrop-robot', type='number', value=0.5, step=0.1,
-                                 style={'width': '100%', 'padding': '8px', 'borderRadius': '4px', 'border': f'1px solid {COLORS["border"]}'})
-                    ], style={'marginBottom': '20px'}),
-                    
-                    html.Div([
-                        html.Label("B80 Multiplier", style={'fontWeight': '600', 'marginBottom': '8px', 'display': 'block'}),
-                        dcc.Input(id='input-b80', type='number', value=0.01, step=0.001,
-                                 style={'width': '100%', 'padding': '8px', 'borderRadius': '4px', 'border': f'1px solid {COLORS["border"]}'})
-                    ], style={'marginBottom': '20px'}),
-                    
-                    html.Div([
-                        html.Label("B81 Multiplier", style={'fontWeight': '600', 'marginBottom': '8px', 'display': 'block'}),
-                        dcc.Input(id='input-b81', type='number', value=1.0, step=0.1,
-                                 style={'width': '100%', 'padding': '8px', 'borderRadius': '4px', 'border': f'1px solid {COLORS["border"]}'})
-                    ], style={'marginBottom': '20px'}),
-                ], style={'flex': '1'}),
-            ], style={'display': 'flex', 'marginBottom': '40px'}),
-            
-            # Result display
-            html.Div([
-                html.H3("Savings Relative to Status Quo", style={
-                    'fontSize': '20px',
-                    'fontWeight': '600',
-                    'marginBottom': '20px',
-                    'textAlign': 'center'
-                }),
-                html.Div(id='calculator-result', style={
-                    'fontSize': '64px',
-                    'fontWeight': '700',
-                    'textAlign': 'center',
-                    'padding': '40px',
-                    'borderRadius': '12px',
-                    'boxShadow': '0 4px 12px rgba(0, 0, 0, 0.1)'
-                })
-            ], style={
-                'background': COLORS['background'],
-                'borderRadius': '8px',
-                'padding': '40px',
-                'border': f'1px solid {COLORS["border"]}'
-            })
-        ], style={'padding': '32px 40px', 'maxWidth': '1200px', 'margin': '0 auto', 'background': COLORS['surface']})
 
 # Create static figures with default 4-week view
 def create_ripe_fruits_figure(selected_farms):
@@ -1453,8 +1321,6 @@ def create_metrics_savings_figure(selected_farms):
         harvesting_speed = row['Real Harvest Speed']  
         recall_with_questionable = row['Recall w/ Questionable']  
         precision_with_questionable = row['Precision w/ Questionable']   
-        # Calculate daily robot harvesting capacity (B30)
-        # B30 = (B11 / B25 * 60 * 60 * B26) / 1000
         daily_robot_capacity_kg=(fruit_weight/harvesting_speed*60*60*robot_hours_per_day)/1000
         weekly_robot_capacity_kg=daily_robot_capacity_kg*7
         daily_human_sweeping=(daily_robot_capacity_kg/recall_with_questionable)*(1/recall_with_questionable)
@@ -1473,15 +1339,7 @@ def create_metrics_savings_figure(selected_farms):
         robots_overseen=5.1
         daily_operator_time=6
         annual_operator_cost=(operator_wage*daily_operator_time*7*weeks_harvested)/robots_overseen
-        print('daily_human_sweeping',daily_human_sweeping)
-        print('recall_with_questionable',recall_with_questionable)
-        print('weekly_robot_capacity_kg',weekly_robot_capacity_kg)
-        print('total_robot_harvested',total_robot_harvested)
-        print('total_human_swept',total_human_swept)
-        print('sweeping_cost',sweeping_cost)
-        print('total_human_sweeping_cost',total_human_sweeping_cost)
-        print('robot_cost',robot_cost)
-        print('annual_operator_cost',annual_operator_cost)
+        
         total_costs_robot_per_year=total_human_sweeping_cost+robot_cost+annual_operator_cost
         
 
@@ -1584,86 +1442,6 @@ def create_metrics_savings_figure(selected_farms):
     )
     
     return fig
-
-# Callback for calculator
-@callback(
-    Output('calculator-result', 'children'),
-    Output('calculator-result', 'style'),
-    Input('input-fruit-weight', 'value'),
-    Input('input-harvest-time', 'value'),
-    Input('input-annual-production', 'value'),
-    Input('input-base-cost', 'value'),
-    Input('input-robot-speed', 'value'),
-    Input('input-recall', 'value'),
-    Input('input-precision', 'value'),
-    Input('input-fruitdrop-human', 'value'),
-    Input('input-fruitdrop-robot', 'value'),
-    Input('input-b80', 'value'),
-    Input('input-b81', 'value')
-)
-def calculate_savings(fruit_weight, harvest_time, annual_production, base_cost, 
-                     robot_speed, recall, precision, fruitdrop_human, fruitdrop_robot, 
-                     b80, b81):
-    try:
-        # Business case calculation
-        # B30 = Daily Robot Harvesting capacity
-        B30 = (fruit_weight / robot_speed * 60 * 60 * harvest_time) / 1000
-        
-        # B78 = Cost savings per robot from reduced fruit drop
-        B78 = (fruitdrop_robot + precision * 100 - fruitdrop_human) * b80 * b81
-        
-        # Calculate savings
-        base_total_cost = annual_production * base_cost
-        efficiency_factor = recall  # Use recall as efficiency
-        
-        # Adjusted cost based on efficiency
-        adjusted_cost = base_total_cost * (1 - efficiency_factor * 0.5)  # Max 50% savings at 100% recall
-        
-        # Calculate savings
-        savings = (base_total_cost - adjusted_cost) / base_total_cost
-        
-        # Add B78 impact
-        savings += B78 / base_total_cost if base_total_cost > 0 else 0
-        
-        # Convert to percentage
-        savings_pct = savings * 100
-        
-        # Determine color
-        if savings_pct < -5:
-            bg_color = '#ffebee'  # Light red
-            text_color = '#c62828'  # Dark red
-        elif savings_pct < 0:
-            bg_color = '#fff9c4'  # Light yellow
-            text_color = '#f57f17'  # Dark yellow
-        elif savings_pct < 10:
-            bg_color = '#e8f5e9'  # Light green
-            text_color = '#2e7d32'  # Dark green
-        else:
-            bg_color = '#c8e6c9'  # Medium green
-            text_color = '#1b5e20'  # Darker green
-        
-        result_text = f"{savings_pct:+.2f}%"
-        
-        result_style = {
-            'fontSize': '64px',
-            'fontWeight': '700',
-            'textAlign': 'center',
-            'padding': '40px',
-            'borderRadius': '12px',
-            'boxShadow': '0 4px 12px rgba(0, 0, 0, 0.1)',
-            'backgroundColor': bg_color,
-            'color': text_color
-        }
-        
-        return result_text, result_style
-        
-    except Exception as e:
-        return f"Error: {str(e)}", {
-            'fontSize': '20px',
-            'textAlign': 'center',
-            'padding': '40px',
-            'color': '#d32f2f'
-        }
 
 # Run the app
 if __name__ == '__main__':
