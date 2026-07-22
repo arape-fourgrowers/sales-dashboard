@@ -72,7 +72,7 @@ def get_db_connection():
             password=DB_PASS,
             host=DB_HOST,
             database=DB_NAME,
-            timeout=120
+            timeout=240
         )
         return conn
     except Exception as e:
@@ -109,7 +109,7 @@ def load_fruit_analytics_data(farm_id='costa'):
         """
         
         # Set a statement timeout (30 seconds for production)
-        conn.run("SET statement_timeout = 30000")  # 30 seconds
+        conn.run("SET statement_timeout = 240000")  # 240 seconds
         result = conn.run(query, farm_id=farm_id)
         conn.close()
         
