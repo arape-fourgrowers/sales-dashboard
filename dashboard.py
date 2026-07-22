@@ -404,6 +404,26 @@ app.layout = html.Div([
                 'borderBottom': f'3px solid {COLORS["primary"]}',
                 'color': COLORS['primary']
             }),
+            dcc.Tab(label='Client Scorecard', value='tab-3', style={
+                'padding': '12px 24px',
+                'fontWeight': '500',
+                'borderBottom': f'3px solid transparent'
+            }, selected_style={
+                'padding': '12px 24px',
+                'fontWeight': '600',
+                'borderBottom': f'3px solid {COLORS["primary"]}',
+                'color': COLORS['primary']
+            }),
+            dcc.Tab(label='Business Case Calculator', value='tab-4', style={
+                'padding': '12px 24px',
+                'fontWeight': '500',
+                'borderBottom': f'3px solid transparent'
+            }, selected_style={
+                'padding': '12px 24px',
+                'fontWeight': '600',
+                'borderBottom': f'3px solid {COLORS["primary"]}',
+                'color': COLORS['primary']
+            }),
         ], style={
             'borderBottom': f'1px solid {COLORS["border"]}'
         })
@@ -578,6 +598,446 @@ def render_content(tab, selected_farms):
                 'border': f'1px solid {COLORS["border"]}'
             }),
         ], style={'padding': '32px 40px', 'maxWidth': '1400px', 'margin': '0 auto', 'background': COLORS['surface']})
+    
+    elif tab == 'tab-3':
+        return create_client_scorecard_tab(selected_farms)
+    
+    elif tab == 'tab-4':
+        return create_business_case_calculator_tab()
+
+def calculate_client_metrics(farm_name):
+    """Calculate current metrics for a farm from the last 6 weeks of data"""
+    from datetime import datetime, timedelta
+    
+    cutoff = datetime.now() - timedelta(weeks=6)
+    
+    # Get Metrics Testing data for this farm
+    if farm_name == 'Costa':
+        farm_metrics = df_metrics_costa[df_metrics_costa['Start Datetime'] >= cutoff].copy()
+    else:  # H&A
+        farm_metrics = df_metrics_ha[df_metrics_ha['Start Datetime'] >= cutoff].copy()
+    
+    # Get Continuous Harvesting data for full row metrics
+    if farm_name == 'Costa':
+        farm_ch = df_costa[df_costa['Start Datetime'] >= cutoff].copy()
+    else:
+        farm_ch = df_ha[df_ha['Start Datetime'] >= cutoff].copy()
+    
+    metrics = {}
+    
+    # Speed (Metrics Test) - Real Harvest Speed converted to kg/hr
+    # Formula: (fruit_weight_g / speed_sec_per_tomato * 3600) / 1000
+    if 'Real Harvest Speed' in farm_metrics.columns and len(farm_metrics) > 0:
+        valid_speeds = farm_metrics[farm_metrics['Real Harvest Speed'].notna() & (farm_metrics['Real Harvest Speed'] > 0)]
+        if len(valid_speeds) > 0:
+            avg_speed_sec = valid_speeds['Real Harvest Speed'].mean()
+            # Assume average fruit weight of 11g
+            metrics['speed_metrics'] = (11.0 / avg_speed_sec * 3600) / 1000
+            metrics['speed_metrics_trend'] = valid_speeds['Real Harvest Speed'].values
+        else:
+            metrics['speed_metrics'] = None
+            metrics['speed_metrics_trend'] = []
+    
+    # Speed (Full Row) - from Robot Harvest Speed in CH sheet, also convert to kg/hr
+    if 'Robot Harvest Speed' in farm_ch.columns and len(farm_ch) > 0:
+        valid_speeds = farm_ch[farm_ch['Robot Harvest Speed'].notna() & (farm_ch['Robot Harvest Speed'] > 0)]
+        if len(valid_speeds) > 0:
+            avg_speed_sec = valid_speeds['Robot Harvest Speed'].mean()
+            metrics['speed_full_row'] = (11.0 / avg_speed_sec * 3600) / 1000
+            metrics['speed_full_row_trend'] = valid_speeds['Robot Harvest Speed'].values
+        else:
+            metrics['speed_full_row'] = None
+            metrics['speed_full_row_trend'] = []
+    
+    # Recall (Metrics Test)
+    if 'Recall w/ Questionable' in farm_metrics.columns and len(farm_metrics) > 0:
+        valid_recall = farm_metrics[farm_metrics['Recall w/ Questionable'].notna()]
+        if len(valid_recall) > 0:
+            metrics['recall_metrics'] = valid_recall['Recall w/ Questionable'].mean()
+            metrics['recall_metrics_trend'] = valid_recall['Recall w/ Questionable'].values
+        else:
+            metrics['recall_metrics'] = None
+            metrics['recall_metrics_trend'] = []
+    
+    # Precision (Metrics Test)
+    if 'Precision w/ Questionable' in farm_metrics.columns and len(farm_metrics) > 0:
+        valid_precision = farm_metrics[farm_metrics['Precision w/ Questionable'].notna()]
+        if len(valid_precision) > 0:
+            metrics['precision_metrics'] = valid_precision['Precision w/ Questionable'].mean()
+            metrics['precision_metrics_trend'] = valid_precision['Precision w/ Questionable'].values
+        else:
+            metrics['precision_metrics'] = None
+            metrics['precision_metrics_trend'] = []
+    
+    # Reliability - calculated as (1 - Drop Rate)
+    if 'Drop Rate' in farm_metrics.columns and len(farm_metrics) > 0:
+        valid_drop = farm_metrics[farm_metrics['Drop Rate'].notna()]
+        if len(valid_drop) > 0:
+            avg_drop = valid_drop['Drop Rate'].mean()
+            metrics['reliability'] = 1 - avg_drop
+            metrics['reliability_trend'] = (1 - valid_drop['Drop Rate']).values
+        else:
+            metrics['reliability'] = None
+            metrics['reliability_trend'] = []
+    
+    return metrics
+
+def get_stoplight_color(value, goal, reverse=False):
+    """Determine stoplight color based on value vs goal
+    reverse=True means lower is better (like for drop rate)
+    """
+    if value is None or goal is None:
+        return '#cccccc'  # Gray for no data
+    
+    ratio = value / goal if not reverse else goal / value
+    
+    if ratio >= 1.0:
+        return '#4caf50'  # Green
+    elif ratio >= 0.85:
+        return '#ffeb3b'  # Yellow
+    else:
+        return '#f44336'  # Red
+
+def create_client_scorecard_tab(selected_farms):
+    """Create the Client Scorecard tab showing current performance vs goals"""
+    
+    # Only show Costa and H&A
+    farms_to_show = [f for f in ['Costa', 'H&A'] if f in selected_farms]
+    
+    if not farms_to_show:
+        return html.Div([
+            html.H2("Please select Costa and/or H&A to view scorecard", 
+                   style={'textAlign': 'center', 'padding': '40px', 'color': COLORS['text_secondary']})
+        ])
+    
+    # Goals (hardcoded as requested)
+    goals = {
+        'Costa': {
+            'speed_metrics': 21,  # kg/hr (20 RFPM)
+            'speed_full_row': 21,
+            'recall_metrics': None,  # No specific goal shown
+            'recall_full_row': 0.60,
+            'precision_metrics': 0.98,
+            'precision_full_row_min': 0.70,
+            'precision_full_row_max': 0.95,
+            'reliability': 0.95,
+        },
+        'H&A': {
+            'speed_metrics': 40,  # kg/hr
+            'speed_full_row': 40,
+            'recall_metrics': None,
+            'recall_full_row_min': 0.40,
+            'recall_full_row_max': 0.50,
+            'precision_metrics': 0.98,
+            'precision_full_row_min': 0.85,
+            'precision_full_row_max': 0.90,
+            'reliability': 0.95,
+        }
+    }
+    
+    # Calculate current metrics for each farm
+    farm_data = {}
+    for farm in farms_to_show:
+        farm_data[farm] = calculate_client_metrics(farm)
+    
+    # Create table rows
+    table_rows = []
+    
+    # Header row
+    header_cells = [html.Th('Client', style={'padding': '16px', 'textAlign': 'left', 'borderBottom': f'2px solid {COLORS["border"]}'})]
+    columns = [
+        'Speed (Metrics Test)',
+        'Speed (Full Row)',
+        'Recall',
+        'Recall (full row)',
+        'Precision',
+        'Precision (full row)',
+        'Reliability',
+        'Quality',
+        'Commitment'
+    ]
+    for col in columns:
+        header_cells.append(html.Th(col, style={'padding': '16px', 'textAlign': 'center', 'borderBottom': f'2px solid {COLORS["border"]}', 'minWidth': '120px'}))
+    
+    table_rows.append(html.Tr(header_cells))
+    
+    # Data rows for each farm
+    for farm in farms_to_show:
+        metrics = farm_data[farm]
+        goal_set = goals[farm]
+        cells = []
+        
+        # Farm name
+        cells.append(html.Td(farm, style={'padding': '16px', 'fontWeight': '600', 'borderBottom': f'1px solid {COLORS["border"]}'}))
+        
+        # Speed (Metrics Test)
+        speed_m = metrics.get('speed_metrics')
+        goal_speed_m = goal_set['speed_metrics']
+        if speed_m:
+            color = get_stoplight_color(speed_m, goal_speed_m)
+            trend_text = f"Last 6 weeks: {', '.join([f'{(11.0/v*3600/1000):.1f}' for v in metrics.get('speed_metrics_trend', [])[-5:]])}"
+            cells.append(html.Td(
+                html.Div([
+                    html.Span('● ', style={'color': color, 'fontSize': '24px', 'marginRight': '8px'}),
+                    html.Span(f'{speed_m:.1f} / {goal_speed_m} kg/hr', style={'fontWeight': '500'})
+                ], title=trend_text),
+                style={'padding': '16px', 'textAlign': 'center', 'borderBottom': f'1px solid {COLORS["border"]}'}
+            ))
+        else:
+            cells.append(html.Td('⚪ TBD', style={'padding': '16px', 'textAlign': 'center', 'borderBottom': f'1px solid {COLORS["border"]}'}))
+        
+        # Speed (Full Row)
+        speed_f = metrics.get('speed_full_row')
+        goal_speed_f = goal_set['speed_full_row']
+        if speed_f:
+            color = get_stoplight_color(speed_f, goal_speed_f)
+            trend_text = f"Last 6 weeks: {', '.join([f'{(11.0/v*3600/1000):.1f}' for v in metrics.get('speed_full_row_trend', [])[-5:]])}"
+            cells.append(html.Td(
+                html.Div([
+                    html.Span('● ', style={'color': color, 'fontSize': '24px', 'marginRight': '8px'}),
+                    html.Span(f'{speed_f:.1f} / {goal_speed_f} kg/hr', style={'fontWeight': '500'})
+                ], title=trend_text),
+                style={'padding': '16px', 'textAlign': 'center', 'borderBottom': f'1px solid {COLORS["border"]}'}
+            ))
+        else:
+            cells.append(html.Td('⚪ TBD', style={'padding': '16px', 'textAlign': 'center', 'borderBottom': f'1px solid {COLORS["border"]}'}))
+        
+        # Recall (Metrics Test)
+        recall_m = metrics.get('recall_metrics')
+        if recall_m:
+            # Use green if > 70%
+            color = '#4caf50' if recall_m >= 0.70 else ('#ffeb3b' if recall_m >= 0.60 else '#f44336')
+            trend_text = f"Last 6 weeks: {', '.join([f'{v:.1%}' for v in metrics.get('recall_metrics_trend', [])[-5:]])}"
+            cells.append(html.Td(
+                html.Div([
+                    html.Span('● ', style={'color': color, 'fontSize': '24px', 'marginRight': '8px'}),
+                    html.Span(f'{recall_m:.0%}', style={'fontWeight': '500'})
+                ], title=trend_text),
+                style={'padding': '16px', 'textAlign': 'center', 'borderBottom': f'1px solid {COLORS["border"]}'}
+            ))
+        else:
+            cells.append(html.Td('⚪ TBD', style={'padding': '16px', 'textAlign': 'center', 'borderBottom': f'1px solid {COLORS["border"]}'}))
+        
+        # Recall (Full Row) - show as range with goal, using red/yellow coloring
+        recall_full_goal = goal_set.get('recall_full_row')
+        if recall_full_goal:
+            # For display, just show the goal since we don't have full row recall in data
+            cells.append(html.Td(
+                html.Div([
+                    html.Span('🔴 ', style={'fontSize': '16px', 'marginRight': '8px'}),
+                    html.Span(f'{recall_full_goal:.0%}', style={'fontWeight': '500'})
+                ]),
+                style={'padding': '16px', 'textAlign': 'center', 'borderBottom': f'1px solid {COLORS["border"]}'}
+            ))
+        else:
+            cells.append(html.Td('⚪ TBD', style={'padding': '16px', 'textAlign': 'center', 'borderBottom': f'1px solid {COLORS["border"]}'}))
+        
+        # Precision (Metrics Test)
+        precision_m = metrics.get('precision_metrics')
+        goal_precision = goal_set['precision_metrics']
+        if precision_m:
+            color = get_stoplight_color(precision_m, goal_precision)
+            trend_text = f"Last 6 weeks: {', '.join([f'{v:.1%}' for v in metrics.get('precision_metrics_trend', [])[-5:]])}"
+            cells.append(html.Td(
+                html.Div([
+                    html.Span('● ', style={'color': color, 'fontSize': '24px', 'marginRight': '8px'}),
+                    html.Span(f'{precision_m:.0%} / {goal_precision:.0%}', style={'fontWeight': '500'})
+                ], title=trend_text),
+                style={'padding': '16px', 'textAlign': 'center', 'borderBottom': f'1px solid {COLORS["border"]}'}
+            ))
+        else:
+            cells.append(html.Td('⚪ TBD', style={'padding': '16px', 'textAlign': 'center', 'borderBottom': f'1px solid {COLORS["border"]}'}))
+        
+        # Precision (Full Row) - show as range
+        precision_full_min = goal_set.get('precision_full_row_min')
+        precision_full_max = goal_set.get('precision_full_row_max')
+        if precision_full_min and precision_full_max:
+            cells.append(html.Td(
+                html.Div([
+                    html.Span('🔴 ', style={'fontSize': '16px', 'marginRight': '8px'}),
+                    html.Span(f'{precision_full_min:.0%}–{precision_full_max:.0%}', style={'fontWeight': '500'})
+                ]),
+                style={'padding': '16px', 'textAlign': 'center', 'borderBottom': f'1px solid {COLORS["border"]}'}
+            ))
+        else:
+            cells.append(html.Td('⚪ TBD', style={'padding': '16px', 'textAlign': 'center', 'borderBottom': f'1px solid {COLORS["border"]}'}))
+        
+        # Reliability
+        reliability = metrics.get('reliability')
+        goal_reliability = goal_set['reliability']
+        if reliability:
+            color = get_stoplight_color(reliability, goal_reliability)
+            trend_text = f"Last 6 weeks: {', '.join([f'{v:.1%}' for v in metrics.get('reliability_trend', [])[-5:]])}"
+            cells.append(html.Td(
+                html.Div([
+                    html.Span('● ', style={'color': color, 'fontSize': '24px', 'marginRight': '8px'}),
+                    html.Span(f'{reliability:.0%} / {goal_reliability:.0%}', style={'fontWeight': '500'})
+                ], title=trend_text),
+                style={'padding': '16px', 'textAlign': 'center', 'borderBottom': f'1px solid {COLORS["border"]}'}
+            ))
+        else:
+            cells.append(html.Td('⚪ TBD', style={'padding': '16px', 'textAlign': 'center', 'borderBottom': f'1px solid {COLORS["border"]}'}))
+        
+        # Quality - hardcoded as "Same as manual" with green
+        cells.append(html.Td(
+            html.Div([
+                html.Span('🟢 ', style={'fontSize': '16px', 'marginRight': '8px'}),
+                html.Span('Same as manual', style={'fontWeight': '500'})
+            ]),
+            style={'padding': '16px', 'textAlign': 'center', 'borderBottom': f'1px solid {COLORS["border"]}'}
+        ))
+        
+        # Commitment
+        cells.append(html.Td('✅', style={'padding': '16px', 'textAlign': 'center', 'fontSize': '20px', 'borderBottom': f'1px solid {COLORS["border"]}'}))
+        
+        table_rows.append(html.Tr(cells))
+    
+    return html.Div([
+        html.H2("Client Performance Scorecard", style={
+            'fontSize': '24px',
+            'fontWeight': '600',
+            'color': COLORS['primary'],
+            'marginBottom': '8px'
+        }),
+        html.P("Current performance vs goals (based on last 6 weeks of data). Hover over stoplight indicators for trend data.", style={
+            'fontSize': '14px',
+            'color': COLORS['text_secondary'],
+            'marginBottom': '30px'
+        }),
+        
+        html.Div([
+            html.Table(table_rows, style={
+                'width': '100%',
+                'borderCollapse': 'collapse',
+                'background': COLORS['background'],
+                'boxShadow': '0 1px 3px rgba(0, 0, 0, 0.1)'
+            })
+        ], style={
+            'overflowX': 'auto',
+            'background': COLORS['background'],
+            'borderRadius': '8px',
+            'padding': '0',
+            'border': f'1px solid {COLORS["border"]}'
+        })
+    ], style={'padding': '32px 40px', 'maxWidth': '1600px', 'margin': '0 auto', 'background': COLORS['surface']})
+
+def create_business_case_calculator_tab():
+    """Create the Business Case Calculator tab (moved from original location)"""
+    return html.Div([
+        html.H2("Business Case Calculator", style={
+            'fontSize': '24px',
+            'fontWeight': '600',
+            'color': COLORS['primary'],
+            'marginBottom': '20px'
+        }),
+        
+        html.P("Adjust the parameters below to calculate savings relative to status quo:", style={
+            'fontSize': '14px',
+            'color': COLORS['text_secondary'],
+            'marginBottom': '30px'
+        }),
+        
+        # Input grid
+        html.Div([
+            # Column 1
+            html.Div([
+                html.Div([
+                    html.Label("Fruit Weight (g)", style={'fontWeight': '600', 'marginBottom': '8px', 'display': 'block'}),
+                    dcc.Input(id='input-fruit-weight', type='number', value=11.0, step=0.1, 
+                             style={'width': '100%', 'padding': '8px', 'borderRadius': '4px', 'border': f'1px solid {COLORS["border"]}'})
+                ], style={'marginBottom': '20px'}),
+                
+                html.Div([
+                    html.Label("Harvesting Time (hrs)", style={'fontWeight': '600', 'marginBottom': '8px', 'display': 'block'}),
+                    dcc.Input(id='input-harvest-time', type='number', value=22.0, step=0.5,
+                             style={'width': '100%', 'padding': '8px', 'borderRadius': '4px', 'border': f'1px solid {COLORS["border"]}'})
+                ], style={'marginBottom': '20px'}),
+                
+                html.Div([
+                    html.Label("Annual Production (kg/yr)", style={'fontWeight': '600', 'marginBottom': '8px', 'display': 'block'}),
+                    dcc.Input(id='input-annual-production', type='number', value=1386000.0, step=1000,
+                             style={'width': '100%', 'padding': '8px', 'borderRadius': '4px', 'border': f'1px solid {COLORS["border"]}'})
+                ], style={'marginBottom': '20px'}),
+                
+                html.Div([
+                    html.Label("Base Harvesting Cost (CAD/kg)", style={'fontWeight': '600', 'marginBottom': '8px', 'display': 'block'}),
+                    dcc.Input(id='input-base-cost', type='number', value=0.44, step=0.01,
+                             style={'width': '100%', 'padding': '8px', 'borderRadius': '4px', 'border': f'1px solid {COLORS["border"]}'})
+                ], style={'marginBottom': '20px'}),
+            ], style={'flex': '1', 'marginRight': '20px'}),
+            
+            # Column 2
+            html.Div([
+                html.Div([
+                    html.Label("Robot Speed (sec/tomato)", style={'fontWeight': '600', 'marginBottom': '8px', 'display': 'block'}),
+                    dcc.Input(id='input-robot-speed', type='number', value=1.0, step=0.1,
+                             style={'width': '100%', 'padding': '8px', 'borderRadius': '4px', 'border': f'1px solid {COLORS["border"]}'})
+                ], style={'marginBottom': '20px'}),
+                
+                html.Div([
+                    html.Label("Recall (0-1)", style={'fontWeight': '600', 'marginBottom': '8px', 'display': 'block'}),
+                    dcc.Input(id='input-recall', type='number', value=0.9, min=0, max=1, step=0.01,
+                             style={'width': '100%', 'padding': '8px', 'borderRadius': '4px', 'border': f'1px solid {COLORS["border"]}'})
+                ], style={'marginBottom': '20px'}),
+                
+                html.Div([
+                    html.Label("Precision (0-1)", style={'fontWeight': '600', 'marginBottom': '8px', 'display': 'block'}),
+                    dcc.Input(id='input-precision', type='number', value=0.10, min=0, max=1, step=0.01,
+                             style={'width': '100%', 'padding': '8px', 'borderRadius': '4px', 'border': f'1px solid {COLORS["border"]}'})
+                ], style={'marginBottom': '20px'}),
+            ], style={'flex': '1', 'marginRight': '20px'}),
+            
+            # Column 3
+            html.Div([
+                html.Div([
+                    html.Label("Fruitdrop Human (%)", style={'fontWeight': '600', 'marginBottom': '8px', 'display': 'block'}),
+                    dcc.Input(id='input-fruitdrop-human', type='number', value=3.5, step=0.1,
+                             style={'width': '100%', 'padding': '8px', 'borderRadius': '4px', 'border': f'1px solid {COLORS["border"]}'})
+                ], style={'marginBottom': '20px'}),
+                
+                html.Div([
+                    html.Label("Fruitdrop Robot (%)", style={'fontWeight': '600', 'marginBottom': '8px', 'display': 'block'}),
+                    dcc.Input(id='input-fruitdrop-robot', type='number', value=0.5, step=0.1,
+                             style={'width': '100%', 'padding': '8px', 'borderRadius': '4px', 'border': f'1px solid {COLORS["border"]}'})
+                ], style={'marginBottom': '20px'}),
+                
+                html.Div([
+                    html.Label("B80 Multiplier", style={'fontWeight': '600', 'marginBottom': '8px', 'display': 'block'}),
+                    dcc.Input(id='input-b80', type='number', value=0.01, step=0.001,
+                             style={'width': '100%', 'padding': '8px', 'borderRadius': '4px', 'border': f'1px solid {COLORS["border"]}'})
+                ], style={'marginBottom': '20px'}),
+                
+                html.Div([
+                    html.Label("B81 Multiplier", style={'fontWeight': '600', 'marginBottom': '8px', 'display': 'block'}),
+                    dcc.Input(id='input-b81', type='number', value=1.0, step=0.1,
+                             style={'width': '100%', 'padding': '8px', 'borderRadius': '4px', 'border': f'1px solid {COLORS["border"]}'})
+                ], style={'marginBottom': '20px'}),
+            ], style={'flex': '1'}),
+        ], style={'display': 'flex', 'marginBottom': '40px'}),
+        
+        # Result display
+        html.Div([
+            html.H3("Savings Relative to Status Quo", style={
+                'fontSize': '20px',
+                'fontWeight': '600',
+                'marginBottom': '20px',
+                'textAlign': 'center'
+            }),
+            html.Div(id='calculator-result', style={
+                'fontSize': '64px',
+                'fontWeight': '700',
+                'textAlign': 'center',
+                'padding': '40px',
+                'borderRadius': '12px',
+                'boxShadow': '0 4px 12px rgba(0, 0, 0, 0.1)'
+            })
+        ], style={
+            'background': COLORS['background'],
+            'borderRadius': '8px',
+            'padding': '40px',
+            'border': f'1px solid {COLORS["border"]}'
+        })
+    ], style={'padding': '32px 40px', 'maxWidth': '1200px', 'margin': '0 auto', 'background': COLORS['surface']})
 
 # Create static figures with default 4-week view
 def create_ripe_fruits_figure(selected_farms):
@@ -1442,6 +1902,86 @@ def create_metrics_savings_figure(selected_farms):
     )
     
     return fig
+
+# Callback for Business Case Calculator
+@callback(
+    Output('calculator-result', 'children'),
+    Output('calculator-result', 'style'),
+    Input('input-fruit-weight', 'value'),
+    Input('input-harvest-time', 'value'),
+    Input('input-annual-production', 'value'),
+    Input('input-base-cost', 'value'),
+    Input('input-robot-speed', 'value'),
+    Input('input-recall', 'value'),
+    Input('input-precision', 'value'),
+    Input('input-fruitdrop-human', 'value'),
+    Input('input-fruitdrop-robot', 'value'),
+    Input('input-b80', 'value'),
+    Input('input-b81', 'value')
+)
+def calculate_savings(fruit_weight, harvest_time, annual_production, base_cost, 
+                     robot_speed, recall, precision, fruitdrop_human, fruitdrop_robot, 
+                     b80, b81):
+    try:
+        # Business case calculation
+        # B30 = Daily Robot Harvesting capacity
+        B30 = (fruit_weight / robot_speed * 60 * 60 * harvest_time) / 1000
+        
+        # B78 = Cost savings per robot from reduced fruit drop
+        B78 = (fruitdrop_robot + precision * 100 - fruitdrop_human) * b80 * b81
+        
+        # Calculate savings
+        base_total_cost = annual_production * base_cost
+        efficiency_factor = recall  # Use recall as efficiency
+        
+        # Adjusted cost based on efficiency
+        adjusted_cost = base_total_cost * (1 - efficiency_factor * 0.5)  # Max 50% savings at 100% recall
+        
+        # Calculate savings
+        savings = (base_total_cost - adjusted_cost) / base_total_cost
+        
+        # Add B78 impact
+        savings += B78 / base_total_cost if base_total_cost > 0 else 0
+        
+        # Convert to percentage
+        savings_pct = savings * 100
+        
+        # Determine color
+        if savings_pct < -5:
+            bg_color = '#ffebee'  # Light red
+            text_color = '#c62828'  # Dark red
+        elif savings_pct < 0:
+            bg_color = '#fff9c4'  # Light yellow
+            text_color = '#f57f17'  # Dark yellow
+        elif savings_pct < 10:
+            bg_color = '#e8f5e9'  # Light green
+            text_color = '#2e7d32'  # Dark green
+        else:
+            bg_color = '#c8e6c9'  # Medium green
+            text_color = '#1b5e20'  # Darker green
+        
+        result_text = f"{savings_pct:+.2f}%"
+        
+        result_style = {
+            'fontSize': '64px',
+            'fontWeight': '700',
+            'textAlign': 'center',
+            'padding': '40px',
+            'borderRadius': '12px',
+            'boxShadow': '0 4px 12px rgba(0, 0, 0, 0.1)',
+            'backgroundColor': bg_color,
+            'color': text_color
+        }
+        
+        return result_text, result_style
+        
+    except Exception as e:
+        return f"Error: {str(e)}", {
+            'fontSize': '20px',
+            'textAlign': 'center',
+            'padding': '40px',
+            'color': '#d32f2f'
+        }
 
 # Run the app
 if __name__ == '__main__':
