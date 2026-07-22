@@ -170,7 +170,16 @@ def load_data(sheet_id, sheet_name):
             seen[h] = 0
             unique_headers.append(h)
     
-    df = pd.DataFrame(data[2:], columns=unique_headers)  # Data starts at row 3
+    # Check if row 2 (index 2) contains just a year marker like "2025"
+    # If so, skip it and start from row 3 (index 3)
+    start_row = 2
+    if len(data) > 2 and len(data[2]) > 0:
+        first_cell = str(data[2][0]).strip()
+        # If first cell is just a 4-digit year, skip this row
+        if first_cell.isdigit() and len(first_cell) == 4:
+            start_row = 3
+    
+    df = pd.DataFrame(data[start_row:], columns=unique_headers)
     
     # Standardize datetime column name
     datetime_col = None
@@ -253,7 +262,16 @@ def load_metrics_testing_data(sheet_id, sheet_name):
             seen[h] = 0
             unique_headers.append(h)
     
-    df = pd.DataFrame(data[2:], columns=unique_headers)  # Data starts at row 3
+    # Check if row 2 (index 2) contains just a year marker like "2025"
+    # If so, skip it and start from row 3 (index 3)
+    start_row = 2
+    if len(data) > 2 and len(data[2]) > 0:
+        first_cell = str(data[2][0]).strip()
+        # If first cell is just a 4-digit year, skip this row
+        if first_cell.isdigit() and len(first_cell) == 4:
+            start_row = 3
+    
+    df = pd.DataFrame(data[start_row:], columns=unique_headers)
     
     # Standardize datetime column name
     datetime_col = None
