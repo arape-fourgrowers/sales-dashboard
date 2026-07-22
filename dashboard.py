@@ -364,10 +364,29 @@ df_westburg['Farm'] = 'Westburg'
 # Combine all farms
 df = pd.concat([df_costa, df_ha, df_sundrop, df_westburg], ignore_index=True, sort=False)
 
-# Load Fruit Analytics data from database
+# Load Fruit Analytics data from database (with timeout protection)
 print("Loading Fruit Analytics data from database...")
-df_fruit_analytics_costa = load_fruit_analytics_data('costa')
-df_fruit_analytics_ha = load_fruit_analytics_data('h&a')
+import signal
+
+def timeout_handler(signum, frame):
+    raise TimeoutError("Database query timed out")
+
+try:
+    signal.signal(signal.SIGALRM, timeout_handler)
+    signal.alarm(15)  # 15 second timeout
+    df_fruit_analytics_costa = load_fruit_analytics_data('costa')
+    signal.alarm(15)  # Reset for next query
+    df_fruit_analytics_ha = load_fruit_analytics_data('h&a')
+    signal.alarm(0)  # Cancel alarm
+except TimeoutError as e:
+    print(f"⚠️  Database queries timed out - skipping Fruit Analytics data")
+    df_fruit_analytics_costa = pd.DataFrame()
+    df_fruit_analytics_ha = pd.DataFrame()
+    signal.alarm(0)
+except Exception as e:
+    print(f"⚠️  Error loading Fruit Analytics: {e}")
+    df_fruit_analytics_costa = pd.DataFrame()
+    df_fruit_analytics_ha = pd.DataFrame()
 
 print("Loading Metrics Testing data...")
 
@@ -423,8 +442,14 @@ max_date = df['Start Datetime'].max()
 default_start = max_date - timedelta(weeks=4)
 
 # Calculate default date range for metrics testing (last 4 weeks)
-max_date_metrics = df_metrics['Start Datetime'].max()
-default_start_metrics = max_date_metrics - timedelta(weeks=4)
+if not df_metrics.empty and 'Start Datetime' in df_metrics.columns:
+    max_date_metrics = df_metrics['Start Datetime'].max()
+    default_start_metrics = max_date_metrics - timedelta(weeks=4)
+else:
+    # Fallback to performance dashboard dates if metrics data is empty
+    max_date_metrics = max_date
+    default_start_metrics = default_start
+    print("⚠️  Using performance dashboard date range for metrics (no metrics data available)")
 
 # Initialize the Dash app
 app = Dash(__name__)
@@ -650,74 +675,101 @@ def render_content(tab, selected_farms):
         ], style={'padding': '32px 40px', 'maxWidth': '1400px', 'margin': '0 auto', 'background': COLORS['surface']})
     
     elif tab == 'tab-2':
-        return html.Div([
-            # Metrics Testing Charts
-            html.Div([
-                dcc.Graph(id='metrics-ripe-fruits', figure=create_metrics_ripe_fruits_figure(selected_farms), config={'displayModeBar': True, 'displaylogo': False})
-            ], style={
-                'background': COLORS['background'],
-                'borderRadius': '8px',
-                'padding': '20px',
-                'marginBottom': '20px',
-                'boxShadow': '0 1px 3px rgba(0, 0, 0, 0.1)',
-                'border': f'1px solid {COLORS["border"]}'
-            }),
-            
-            html.Div([
-                dcc.Graph(id='metrics-recall', figure=create_metrics_recall_figure(selected_farms), config={'displayModeBar': True, 'displaylogo': False})
-            ], style={
-                'background': COLORS['background'],
-                'borderRadius': '8px',
-                'padding': '20px',
-                'marginBottom': '20px',
-                'boxShadow': '0 1px 3px rgba(0, 0, 0, 0.1)',
-                'border': f'1px solid {COLORS["border"]}'
-            }),
-            
-            html.Div([
-                dcc.Graph(id='metrics-precision', figure=create_metrics_precision_figure(selected_farms), config={'displayModeBar': True, 'displaylogo': False})
-            ], style={
-                'background': COLORS['background'],
-                'borderRadius': '8px',
-                'padding': '20px',
-                'marginBottom': '20px',
-                'boxShadow': '0 1px 3px rgba(0, 0, 0, 0.1)',
-                'border': f'1px solid {COLORS["border"]}'
-            }),
-            
-            html.Div([
-                dcc.Graph(id='metrics-harvest-speed', figure=create_metrics_harvest_speed_figure(selected_farms), config={'displayModeBar': True, 'displaylogo': False})
-            ], style={
-                'background': COLORS['background'],
-                'borderRadius': '8px',
-                'padding': '20px',
-                'marginBottom': '20px',
-                'boxShadow': '0 1px 3px rgba(0, 0, 0, 0.1)',
-                'border': f'1px solid {COLORS["border"]}'
-            }),
-            
-            html.Div([
-                dcc.Graph(id='metrics-drop-rate', figure=create_metrics_drop_rate_figure(selected_farms), config={'displayModeBar': True, 'displaylogo': False})
-            ], style={
-                'background': COLORS['background'],
-                'borderRadius': '8px',
-                'padding': '20px',
-                'marginBottom': '20px',
-                'boxShadow': '0 1px 3px rgba(0, 0, 0, 0.1)',
-                'border': f'1px solid {COLORS["border"]}'
-            }),
-            
-            html.Div([
-                dcc.Graph(id='metrics-savings', figure=create_metrics_savings_figure(selected_farms), config={'displayModeBar': True, 'displaylogo': False})
-            ], style={
-                'background': COLORS['background'],
-                'borderRadius': '8px',
-                'padding': '20px',
-                'marginBottom': '20px',
-                'boxShadow': '0 1px 3px rgba(0, 0, 0, 0.1)',
-                'border': f'1px solid {COLORS["border"]}'
-            }),
-        ], style={'padding': '32px 40px', 'maxWidth': '1400px', 'margin': '0 auto', 'background': COLORS['surface']})
+        try:
+            return html.Div([
+                # Metrics Testing Charts
+                html.Div([
+                    dcc.Graph(id='metrics-ripe-fruits', figure=create_metrics_ripe_fruits_figure(selected_farms), config={'displayModeBar': True, 'displaylogo': False})
+                ], style={
+                    'background': COLORS['background'],
+                    'borderRadius': '8px',
+                    'padding': '20px',
+                    'marginBottom': '20px',
+                    'boxShadow': '0 1px 3px rgba(0, 0, 0, 0.1)',
+                    'border': f'1px solid {COLORS["border"]}'
+                }),
+                
+                html.Div([
+                    dcc.Graph(id='metrics-recall', figure=create_metrics_recall_figure(selected_farms), config={'displayModeBar': True, 'displaylogo': False})
+                ], style={
+                    'background': COLORS['background'],
+                    'borderRadius': '8px',
+                    'padding': '20px',
+                    'marginBottom': '20px',
+                    'boxShadow': '0 1px 3px rgba(0, 0, 0, 0.1)',
+                    'border': f'1px solid {COLORS["border"]}'
+                }),
+                
+                html.Div([
+                    dcc.Graph(id='metrics-precision', figure=create_metrics_precision_figure(selected_farms), config={'displayModeBar': True, 'displaylogo': False})
+                ], style={
+                    'background': COLORS['background'],
+                    'borderRadius': '8px',
+                    'padding': '20px',
+                    'marginBottom': '20px',
+                    'boxShadow': '0 1px 3px rgba(0, 0, 0, 0.1)',
+                    'border': f'1px solid {COLORS["border"]}'
+                }),
+                
+                html.Div([
+                    dcc.Graph(id='metrics-harvest-speed', figure=create_metrics_harvest_speed_figure(selected_farms), config={'displayModeBar': True, 'displaylogo': False})
+                ], style={
+                    'background': COLORS['background'],
+                    'borderRadius': '8px',
+                    'padding': '20px',
+                    'marginBottom': '20px',
+                    'boxShadow': '0 1px 3px rgba(0, 0, 0, 0.1)',
+                    'border': f'1px solid {COLORS["border"]}'
+                }),
+                
+                html.Div([
+                    dcc.Graph(id='metrics-drop-rate', figure=create_metrics_drop_rate_figure(selected_farms), config={'displayModeBar': True, 'displaylogo': False})
+                ], style={
+                    'background': COLORS['background'],
+                    'borderRadius': '8px',
+                    'padding': '20px',
+                    'marginBottom': '20px',
+                    'boxShadow': '0 1px 3px rgba(0, 0, 0, 0.1)',
+                    'border': f'1px solid {COLORS["border"]}'
+                }),
+                
+                html.Div([
+                    dcc.Graph(id='metrics-savings', figure=create_metrics_savings_figure(selected_farms), config={'displayModeBar': True, 'displaylogo': False})
+                ], style={
+                    'background': COLORS['background'],
+                    'borderRadius': '8px',
+                    'padding': '20px',
+                    'marginBottom': '20px',
+                    'boxShadow': '0 1px 3px rgba(0, 0, 0, 0.1)',
+                    'border': f'1px solid {COLORS["border"]}'
+                }),
+            ], style={'padding': '32px 40px', 'maxWidth': '1400px', 'margin': '0 auto', 'background': COLORS['surface']})
+        except Exception as e:
+            import traceback
+            error_msg = str(e)
+            stack_trace = traceback.format_exc()
+            print(f"❌ ERROR rendering Metrics tab: {error_msg}")
+            print(stack_trace)
+            return html.Div([
+                html.H2("Error Loading Metrics Tab", style={
+                    'color': '#d32f2f',
+                    'textAlign': 'center',
+                    'padding': '40px'
+                }),
+                html.P(f"Error: {error_msg}", style={
+                    'textAlign': 'center',
+                    'color': COLORS['text_secondary'],
+                    'fontSize': '14px'
+                }),
+                html.Pre(stack_trace, style={
+                    'background': '#f5f5f5',
+                    'padding': '20px',
+                    'borderRadius': '8px',
+                    'overflow': 'auto',
+                    'maxHeight': '400px',
+                    'fontSize': '12px'
+                })
+            ], style={'padding': '40px'})
     
     elif tab == 'tab-3':
         return create_client_scorecard_tab(selected_farms)
