@@ -22,6 +22,14 @@ HA_SHEET_ID = "1DKtjOg62fYP2iHw-DpUDjsHWfmYaYcblBMKqxC0V9gc"
 HA_SHEET_NAME = "H&A Continuous Harvesting"
 HA_METRICS_SHEET = "Metrics Testing"
 
+SUNDROP_SHEET_ID = "1v4BTxZJ_Pmw22AXSmePNq_F55K3YyJVm5l8Kq1HOs9o"
+SUNDROP_SHEET_NAME = "Sundrop Continuous Harvesting"
+SUNDROP_METRICS_SHEET = "200008 Metrics Testing"
+
+WESTBURG_SHEET_ID = "1Ik7Kupnq16lJf373Jwj0zSr4bzBdWXbUn58Mj-ivF_0"
+WESTBURG_SHEET_NAME = "Westburg Continuous Harvesting"
+WESTBURG_METRICS_SHEET = "Metrics Testing"
+
 # Professional color scheme - FourGrowers branding
 COLORS = {
     'background': '#ffffff',
@@ -325,8 +333,16 @@ df_ha = load_data(HA_SHEET_ID, HA_SHEET_NAME)
 print(f"Loaded {len(df_ha)} rows from H&A")
 df_ha['Farm'] = 'H&A'
 
-# Combine both farms
-df = pd.concat([df_costa, df_ha], ignore_index=True, sort=False)
+df_sundrop = load_data(SUNDROP_SHEET_ID, SUNDROP_SHEET_NAME)
+print(f"Loaded {len(df_sundrop)} rows from Sundrop")
+df_sundrop['Farm'] = 'Sundrop'
+
+df_westburg = load_data(WESTBURG_SHEET_ID, WESTBURG_SHEET_NAME)
+print(f"Loaded {len(df_westburg)} rows from Westburg")
+df_westburg['Farm'] = 'Westburg'
+
+# Combine all farms
+df = pd.concat([df_costa, df_ha, df_sundrop, df_westburg], ignore_index=True, sort=False)
 
 # Load Fruit Analytics data from database
 print("Loading Fruit Analytics data from database...")
@@ -342,8 +358,16 @@ df_metrics_ha = load_metrics_testing_data(HA_SHEET_ID, HA_METRICS_SHEET)
 print(f"Loaded {len(df_metrics_ha)} rows from H&A Metrics Testing")
 df_metrics_ha['Farm'] = 'H&A'
 
-# Combine both farms
-df_metrics = pd.concat([df_metrics_costa, df_metrics_ha], ignore_index=True, sort=False)
+df_metrics_sundrop = load_metrics_testing_data(SUNDROP_SHEET_ID, SUNDROP_METRICS_SHEET)
+print(f"Loaded {len(df_metrics_sundrop)} rows from Sundrop Metrics Testing")
+df_metrics_sundrop['Farm'] = 'Sundrop'
+
+df_metrics_westburg = load_metrics_testing_data(WESTBURG_SHEET_ID, WESTBURG_METRICS_SHEET)
+print(f"Loaded {len(df_metrics_westburg)} rows from Westburg Metrics Testing")
+df_metrics_westburg['Farm'] = 'Westburg'
+
+# Combine all farms metrics
+df_metrics = pd.concat([df_metrics_costa, df_metrics_ha, df_metrics_sundrop, df_metrics_westburg], ignore_index=True, sort=False)
 
 # Calculate default date range (last 4 weeks)
 max_date = df['Start Datetime'].max()
@@ -407,9 +431,11 @@ app.layout = html.Div([
             id='farm-selector',
             options=[
                 {'label': ' Costa', 'value': 'Costa'},
-                {'label': ' H&A', 'value': 'H&A'}
+                {'label': ' H&A', 'value': 'H&A'},
+                {'label': ' Sundrop', 'value': 'Sundrop'},
+                {'label': ' Westburg', 'value': 'Westburg'}
             ],
-            value=['Costa', 'H&A'],
+            value=['Costa', 'H&A', 'Sundrop', 'Westburg'],
             inline=True,
             style={'display': 'inline-block'},
             labelStyle={
@@ -663,10 +689,20 @@ def calculate_client_metrics(farm_name):
             (df_metrics_costa['Start Datetime'] >= cutoff) &
             (df_metrics_costa['Baseline Run?'] == 'TRUE')
         ].copy()
-    else:  # H&A
+    elif farm_name == 'H&A':
         farm_metrics = df_metrics_ha[
             (df_metrics_ha['Start Datetime'] >= cutoff) &
             (df_metrics_ha['Baseline Run?'] == 'TRUE')
+        ].copy()
+    elif farm_name == 'Sundrop':
+        farm_metrics = df_metrics_sundrop[
+            (df_metrics_sundrop['Start Datetime'] >= cutoff) &
+            (df_metrics_sundrop['Baseline Run?'] == 'TRUE')
+        ].copy()
+    else:  # Westburg
+        farm_metrics = df_metrics_westburg[
+            (df_metrics_westburg['Start Datetime'] >= cutoff) &
+            (df_metrics_westburg['Baseline Run?'] == 'TRUE')
         ].copy()
     
     # Sort by date (newest at bottom)
@@ -675,8 +711,12 @@ def calculate_client_metrics(farm_name):
     # Get Continuous Harvesting data for full row metrics
     if farm_name == 'Costa':
         farm_ch = df_costa[df_costa['Start Datetime'] >= cutoff].copy()
-    else:
+    elif farm_name == 'H&A':
         farm_ch = df_ha[df_ha['Start Datetime'] >= cutoff].copy()
+    elif farm_name == 'Sundrop':
+        farm_ch = df_sundrop[df_sundrop['Start Datetime'] >= cutoff].copy()
+    else:  # Westburg
+        farm_ch = df_westburg[df_westburg['Start Datetime'] >= cutoff].copy()
     
     # Sort by date
     farm_ch = farm_ch.sort_values('Start Datetime')
@@ -851,21 +891,21 @@ def get_stoplight_color(value, goal, reverse=False):
 def create_client_scorecard_tab(selected_farms):
     """Create the Client Scorecard tab showing current performance vs goals"""
     
-    # Only show Costa and H&A
-    farms_to_show = [f for f in ['Costa', 'H&A'] if f in selected_farms]
+    # Show all four farms
+    farms_to_show = [f for f in ['Costa', 'H&A', 'Sundrop', 'Westburg'] if f in selected_farms]
     
     if not farms_to_show:
         return html.Div([
-            html.H2("Please select Costa and/or H&A to view scorecard", 
+            html.H2("Please select farms to view scorecard", 
                    style={'textAlign': 'center', 'padding': '40px', 'color': COLORS['text_secondary']})
         ])
     
-    # Goals (hardcoded as requested)
+    # Goals (hardcoded as requested, based on spreadsheet Sheet2)
     goals = {
         'Costa': {
             'speed_metrics': 21,  # kg/hr (20 RFPM)
             'speed_full_row': 21,
-            'recall_metrics': None,  # No specific goal shown
+            'recall_metrics': None,
             'recall_full_row': 0.60,
             'precision_metrics': 0.98,
             'precision_full_row_min': 0.70,
@@ -881,6 +921,28 @@ def create_client_scorecard_tab(selected_farms):
             'precision_metrics': 0.98,
             'precision_full_row_min': 0.85,
             'precision_full_row_max': 0.90,
+            'reliability': 0.95,
+        },
+        'Sundrop': {
+            'speed_metrics': 40,  # kg/hr
+            'speed_full_row': 40,
+            'recall_metrics': None,
+            'recall_full_row_min': 0.60,
+            'recall_full_row_max': 0.85,
+            'precision_metrics': 0.98,
+            'precision_full_row_min': 0.85,
+            'precision_full_row_max': 0.98,
+            'reliability': 0.95,
+        },
+        'Westburg': {
+            'speed_metrics': 40,  # kg/hr
+            'speed_full_row': 40,
+            'recall_metrics': None,
+            'recall_full_row_min': 0.70,
+            'recall_full_row_max': 0.90,
+            'precision_metrics': 0.98,
+            'precision_full_row_min': None,
+            'precision_full_row_max': None,
             'reliability': 0.95,
         }
     }
@@ -1213,7 +1275,9 @@ def create_ripe_fruits_figure(selected_farms):
     if len(selected_farms) > 1:
         farm_colors = {
             'Costa': COLORS['primary'],
-            'H&A': COLORS['secondary']
+            'H&A': COLORS['secondary'],
+            'Sundrop': COLORS['accent'],
+            'Westburg': COLORS['primary_dark']
         }
         
         for farm in selected_farms:
@@ -1352,7 +1416,9 @@ def create_harvest_speed_figure(selected_farms):
     if len(selected_farms) > 1:
         farm_colors = {
             'Costa': COLORS['primary'],
-            'H&A': COLORS['secondary']
+            'H&A': COLORS['secondary'],
+            'Sundrop': COLORS['accent'],
+            'Westburg': COLORS['primary_dark']
         }
         
         for farm in selected_farms:
@@ -1451,7 +1517,9 @@ def create_harvest_weight_figure(selected_farms):
     if len(selected_farms) > 1:
         farm_colors = {
             'Costa': COLORS['primary'],
-            'H&A': COLORS['secondary']
+            'H&A': COLORS['secondary'],
+            'Sundrop': COLORS['accent'],
+            'Westburg': COLORS['primary_dark']
         }
         
         for farm in selected_farms:
@@ -1534,7 +1602,9 @@ def create_fruit_weight_figure(selected_farms):
     if len(selected_farms) > 1:
         farm_colors = {
             'Costa': COLORS['primary'],
-            'H&A': COLORS['secondary']
+            'H&A': COLORS['secondary'],
+            'Sundrop': COLORS['accent'],
+            'Westburg': COLORS['primary_dark']
         }
         
         for farm in selected_farms:
@@ -1620,7 +1690,9 @@ def create_metrics_figure_helper(selected_farms, column_name, title, yaxis_title
     if len(selected_farms) > 1:
         farm_colors = {
             'Costa': COLORS['primary'],
-            'H&A': COLORS['secondary']
+            'H&A': COLORS['secondary'],
+            'Sundrop': COLORS['accent'],
+            'Westburg': COLORS['primary_dark']
         }
         
         for farm in selected_farms:
@@ -1745,7 +1817,9 @@ def create_metrics_ripe_fruits_figure(selected_farms):
     if len(selected_farms) > 1:
         farm_colors = {
             'Costa': COLORS['primary'],
-            'H&A': COLORS['secondary']
+            'H&A': COLORS['secondary'],
+            'Sundrop': COLORS['accent'],
+            'Westburg': COLORS['primary_dark']
         }
         
         for farm in selected_farms:
@@ -2014,7 +2088,9 @@ def create_metrics_savings_figure(selected_farms):
     if len(selected_farms) > 1:
         farm_colors = {
             'Costa': COLORS['primary'],
-            'H&A': COLORS['secondary']
+            'H&A': COLORS['secondary'],
+            'Sundrop': COLORS['accent'],
+            'Westburg': COLORS['primary_dark']
         }
         
         for farm in selected_farms:
