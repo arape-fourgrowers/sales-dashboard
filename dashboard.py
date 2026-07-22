@@ -190,6 +190,27 @@ def load_data(sheet_id, sheet_name):
         if col in df.columns:
             df[col] = pd.to_numeric(df[col], errors='coerce')
     
+    # Parse time duration columns (Downtime and Harvest Duration) in CH sheets
+    time_cols = ['Downtime ', 'Harvest Duration']
+    for col in time_cols:
+        if col in df.columns:
+            def parse_duration(time_str):
+                """Parse H:MM:SS format to hours as float"""
+                if not time_str or time_str in ['', ' ', '#VALUE!', '#DIV/0!', '`']:
+                    return None
+                try:
+                    parts = str(time_str).split(':')
+                    if len(parts) == 3:
+                        hours = float(parts[0])
+                        minutes = float(parts[1])
+                        seconds = float(parts[2])
+                        return hours + minutes/60 + seconds/3600
+                    return None
+                except:
+                    return None
+            
+            df[col + '_hours'] = df[col].apply(parse_duration)
+    
     # Remove rows with invalid dates
     df = df.dropna(subset=['Start Datetime'])
     
@@ -732,16 +753,16 @@ def calculate_client_metrics(farm_name):
         metrics['precision_metrics_trend'] = []
     
     # Reliability - calculated as Uptime = Harvest Duration / (Harvest Duration + Downtime)
-    # BASELINE RUNS ONLY
-    downtime_col = 'Downtime (estimate)_hours'
+    # Use CONTINUOUS HARVESTING data (not Metrics Testing)
+    downtime_col = 'Downtime _hours'
     duration_col = 'Harvest Duration_hours'
     
-    if downtime_col in farm_metrics.columns and duration_col in farm_metrics.columns and len(farm_metrics) > 0:
+    if downtime_col in farm_ch.columns and duration_col in farm_ch.columns and len(farm_ch) > 0:
         # Filter for valid data
-        valid_data = farm_metrics[
-            farm_metrics[downtime_col].notna() & 
-            farm_metrics[duration_col].notna() & 
-            (farm_metrics[duration_col] > 0)
+        valid_data = farm_ch[
+            farm_ch[downtime_col].notna() & 
+            farm_ch[duration_col].notna() & 
+            (farm_ch[duration_col] > 0)
         ].copy()
         
         if len(valid_data) > 0:
