@@ -667,10 +667,10 @@ def calculate_client_metrics(farm_name):
     if speed_col in farm_metrics.columns and len(farm_metrics) > 0:
         valid_speeds = farm_metrics[farm_metrics[speed_col].notna() & (farm_metrics[speed_col] > 0)]
         if len(valid_speeds) > 0:
-            # Take mean of all baseline runs in last 6 weeks
-            metrics['speed_metrics'] = valid_speeds[speed_col].mean()
-            # Keep last 5 values for trend (newest at end)
-            metrics['speed_metrics_trend'] = valid_speeds[speed_col].values[-5:]
+            # Take MOST RECENT value (last one, newest at bottom)
+            metrics['speed_metrics'] = valid_speeds[speed_col].iloc[-1]
+            # Keep last 10 values for trend (oldest to newest)
+            metrics['speed_metrics_trend'] = valid_speeds[speed_col].values[-10:]
         else:
             metrics['speed_metrics'] = None
             metrics['speed_metrics_trend'] = []
@@ -689,11 +689,11 @@ def calculate_client_metrics(farm_name):
             # Calculate weekly averages
             weekly_avg = valid_speeds.groupby('Week')[speed_col_ch].mean()
             
-            # Overall average across all weeks
-            metrics['speed_full_row'] = weekly_avg.mean()
+            # Take MOST RECENT week's average
+            metrics['speed_full_row'] = weekly_avg.iloc[-1]
             
-            # Keep last 5 weeks for trend (newest at end)
-            metrics['speed_full_row_trend'] = weekly_avg.values[-5:]
+            # Keep last 10 weeks for trend (oldest to newest)
+            metrics['speed_full_row_trend'] = weekly_avg.values[-10:]
         else:
             metrics['speed_full_row'] = None
             metrics['speed_full_row_trend'] = []
@@ -705,9 +705,10 @@ def calculate_client_metrics(farm_name):
     if 'Recall w/ Questionable' in farm_metrics.columns and len(farm_metrics) > 0:
         valid_recall = farm_metrics[farm_metrics['Recall w/ Questionable'].notna()]
         if len(valid_recall) > 0:
-            metrics['recall_metrics'] = valid_recall['Recall w/ Questionable'].mean()
-            # Keep last 5 values for trend (newest at end)
-            metrics['recall_metrics_trend'] = valid_recall['Recall w/ Questionable'].values[-5:]
+            # Take MOST RECENT value
+            metrics['recall_metrics'] = valid_recall['Recall w/ Questionable'].iloc[-1]
+            # Keep last 10 values for trend (oldest to newest)
+            metrics['recall_metrics_trend'] = valid_recall['Recall w/ Questionable'].values[-10:]
         else:
             metrics['recall_metrics'] = None
             metrics['recall_metrics_trend'] = []
@@ -719,9 +720,10 @@ def calculate_client_metrics(farm_name):
     if 'Precision w/ Questionable' in farm_metrics.columns and len(farm_metrics) > 0:
         valid_precision = farm_metrics[farm_metrics['Precision w/ Questionable'].notna()]
         if len(valid_precision) > 0:
-            metrics['precision_metrics'] = valid_precision['Precision w/ Questionable'].mean()
-            # Keep last 5 values for trend (newest at end)
-            metrics['precision_metrics_trend'] = valid_precision['Precision w/ Questionable'].values[-5:]
+            # Take MOST RECENT value
+            metrics['precision_metrics'] = valid_precision['Precision w/ Questionable'].iloc[-1]
+            # Keep last 10 values for trend (oldest to newest)
+            metrics['precision_metrics_trend'] = valid_precision['Precision w/ Questionable'].values[-10:]
         else:
             metrics['precision_metrics'] = None
             metrics['precision_metrics_trend'] = []
@@ -745,10 +747,10 @@ def calculate_client_metrics(farm_name):
         if len(valid_data) > 0:
             # Calculate uptime for each run
             valid_data['uptime'] = valid_data[duration_col] / (valid_data[duration_col] + valid_data[downtime_col])
-            # Average uptime across all baseline runs
-            metrics['reliability'] = valid_data['uptime'].mean()
-            # Keep last 5 values for trend (newest at end)
-            metrics['reliability_trend'] = valid_data['uptime'].values[-5:]
+            # Take MOST RECENT value
+            metrics['reliability'] = valid_data['uptime'].iloc[-1]
+            # Keep last 10 values for trend (oldest to newest)
+            metrics['reliability_trend'] = valid_data['uptime'].values[-10:]
         else:
             metrics['reliability'] = None
             metrics['reliability_trend'] = []
@@ -757,6 +759,37 @@ def calculate_client_metrics(farm_name):
         metrics['reliability_trend'] = []
     
     return metrics
+
+def create_sparkline_graph(values, width=120, height=30, color='#2d6a4f'):
+    """Create an inline SVG sparkline graph for trend visualization"""
+    import plotly.graph_objects as go
+    
+    if not values or len(values) == 0:
+        return None
+    
+    # Create a mini plotly figure
+    fig = go.Figure()
+    
+    fig.add_trace(go.Scatter(
+        y=list(values),
+        mode='lines',
+        line=dict(color=color, width=2),
+        hoverinfo='y',
+        showlegend=False
+    ))
+    
+    fig.update_layout(
+        width=width,
+        height=height,
+        margin=dict(l=5, r=5, t=5, b=5),
+        xaxis=dict(showgrid=False, showticklabels=False, zeroline=False),
+        yaxis=dict(showgrid=False, showticklabels=False, zeroline=False),
+        paper_bgcolor='rgba(0,0,0,0)',
+        plot_bgcolor='rgba(0,0,0,0)',
+        hovermode='x'
+    )
+    
+    return fig
 
 def get_stoplight_color(value, goal, reverse=False):
     """Determine stoplight color based on value vs goal
@@ -851,14 +884,20 @@ def create_client_scorecard_tab(selected_farms):
         goal_speed_m = goal_set['speed_metrics']
         if speed_m:
             color = get_stoplight_color(speed_m, goal_speed_m)
-            trend_text = f"Last 5 baseline runs: {', '.join([f'{v:.1f}' for v in metrics.get('speed_metrics_trend', [])])} kg/hr"
-            cells.append(html.Td(
+            trend_values = metrics.get('speed_metrics_trend', [])
+            sparkline_fig = create_sparkline_graph(trend_values, color=color)
+            
+            cells.append(html.Td([
                 html.Div([
                     html.Span('● ', style={'color': color, 'fontSize': '24px', 'marginRight': '8px'}),
                     html.Span(f'{speed_m:.1f} / {goal_speed_m} kg/hr', style={'fontWeight': '500'})
-                ], title=trend_text),
-                style={'padding': '16px', 'textAlign': 'center', 'borderBottom': f'1px solid {COLORS["border"]}'}
-            ))
+                ]),
+                dcc.Graph(
+                    figure=sparkline_fig,
+                    config={'displayModeBar': False, 'staticPlot': True},
+                    style={'height': '30px', 'marginTop': '8px'}
+                ) if sparkline_fig else None
+            ], style={'padding': '16px', 'textAlign': 'center', 'borderBottom': f'1px solid {COLORS["border"]}'}))
         else:
             cells.append(html.Td('⚪ TBD', style={'padding': '16px', 'textAlign': 'center', 'borderBottom': f'1px solid {COLORS["border"]}'}))
         
@@ -867,14 +906,20 @@ def create_client_scorecard_tab(selected_farms):
         goal_speed_f = goal_set['speed_full_row']
         if speed_f:
             color = get_stoplight_color(speed_f, goal_speed_f)
-            trend_text = f"Last 5 weeks (avg): {', '.join([f'{v:.1f}' for v in metrics.get('speed_full_row_trend', [])])} kg/hr"
-            cells.append(html.Td(
+            trend_values = metrics.get('speed_full_row_trend', [])
+            sparkline_fig = create_sparkline_graph(trend_values, color=color)
+            
+            cells.append(html.Td([
                 html.Div([
                     html.Span('● ', style={'color': color, 'fontSize': '24px', 'marginRight': '8px'}),
                     html.Span(f'{speed_f:.1f} / {goal_speed_f} kg/hr', style={'fontWeight': '500'})
-                ], title=trend_text),
-                style={'padding': '16px', 'textAlign': 'center', 'borderBottom': f'1px solid {COLORS["border"]}'}
-            ))
+                ]),
+                dcc.Graph(
+                    figure=sparkline_fig,
+                    config={'displayModeBar': False, 'staticPlot': True},
+                    style={'height': '30px', 'marginTop': '8px'}
+                ) if sparkline_fig else None
+            ], style={'padding': '16px', 'textAlign': 'center', 'borderBottom': f'1px solid {COLORS["border"]}'}))
         else:
             cells.append(html.Td('⚪ TBD', style={'padding': '16px', 'textAlign': 'center', 'borderBottom': f'1px solid {COLORS["border"]}'}))
         
@@ -883,14 +928,20 @@ def create_client_scorecard_tab(selected_farms):
         if recall_m:
             # Use green if > 70%
             color = '#4caf50' if recall_m >= 0.70 else ('#ffeb3b' if recall_m >= 0.60 else '#f44336')
-            trend_text = f"Last 5 baseline runs: {', '.join([f'{v:.1%}' for v in metrics.get('recall_metrics_trend', [])])}"
-            cells.append(html.Td(
+            trend_values = metrics.get('recall_metrics_trend', [])
+            sparkline_fig = create_sparkline_graph(trend_values, color=color)
+            
+            cells.append(html.Td([
                 html.Div([
                     html.Span('● ', style={'color': color, 'fontSize': '24px', 'marginRight': '8px'}),
                     html.Span(f'{recall_m:.0%}', style={'fontWeight': '500'})
-                ], title=trend_text),
-                style={'padding': '16px', 'textAlign': 'center', 'borderBottom': f'1px solid {COLORS["border"]}'}
-            ))
+                ]),
+                dcc.Graph(
+                    figure=sparkline_fig,
+                    config={'displayModeBar': False, 'staticPlot': True},
+                    style={'height': '30px', 'marginTop': '8px'}
+                ) if sparkline_fig else None
+            ], style={'padding': '16px', 'textAlign': 'center', 'borderBottom': f'1px solid {COLORS["border"]}'}))
         else:
             cells.append(html.Td('⚪ TBD', style={'padding': '16px', 'textAlign': 'center', 'borderBottom': f'1px solid {COLORS["border"]}'}))
         
@@ -913,14 +964,20 @@ def create_client_scorecard_tab(selected_farms):
         goal_precision = goal_set['precision_metrics']
         if precision_m:
             color = get_stoplight_color(precision_m, goal_precision)
-            trend_text = f"Last 5 baseline runs: {', '.join([f'{v:.1%}' for v in metrics.get('precision_metrics_trend', [])])}"
-            cells.append(html.Td(
+            trend_values = metrics.get('precision_metrics_trend', [])
+            sparkline_fig = create_sparkline_graph(trend_values, color=color)
+            
+            cells.append(html.Td([
                 html.Div([
                     html.Span('● ', style={'color': color, 'fontSize': '24px', 'marginRight': '8px'}),
                     html.Span(f'{precision_m:.0%} / {goal_precision:.0%}', style={'fontWeight': '500'})
-                ], title=trend_text),
-                style={'padding': '16px', 'textAlign': 'center', 'borderBottom': f'1px solid {COLORS["border"]}'}
-            ))
+                ]),
+                dcc.Graph(
+                    figure=sparkline_fig,
+                    config={'displayModeBar': False, 'staticPlot': True},
+                    style={'height': '30px', 'marginTop': '8px'}
+                ) if sparkline_fig else None
+            ], style={'padding': '16px', 'textAlign': 'center', 'borderBottom': f'1px solid {COLORS["border"]}'}))
         else:
             cells.append(html.Td('⚪ TBD', style={'padding': '16px', 'textAlign': 'center', 'borderBottom': f'1px solid {COLORS["border"]}'}))
         
@@ -943,14 +1000,20 @@ def create_client_scorecard_tab(selected_farms):
         goal_reliability = goal_set['reliability']
         if reliability:
             color = get_stoplight_color(reliability, goal_reliability)
-            trend_text = f"Last 5 baseline runs: {', '.join([f'{v:.1%}' for v in metrics.get('reliability_trend', [])])}"
-            cells.append(html.Td(
+            trend_values = metrics.get('reliability_trend', [])
+            sparkline_fig = create_sparkline_graph(trend_values, color=color)
+            
+            cells.append(html.Td([
                 html.Div([
                     html.Span('● ', style={'color': color, 'fontSize': '24px', 'marginRight': '8px'}),
                     html.Span(f'{reliability:.0%} / {goal_reliability:.0%}', style={'fontWeight': '500'})
-                ], title=trend_text),
-                style={'padding': '16px', 'textAlign': 'center', 'borderBottom': f'1px solid {COLORS["border"]}'}
-            ))
+                ]),
+                dcc.Graph(
+                    figure=sparkline_fig,
+                    config={'displayModeBar': False, 'staticPlot': True},
+                    style={'height': '30px', 'marginTop': '8px'}
+                ) if sparkline_fig else None
+            ], style={'padding': '16px', 'textAlign': 'center', 'borderBottom': f'1px solid {COLORS["border"]}'}))
         else:
             cells.append(html.Td('⚪ TBD', style={'padding': '16px', 'textAlign': 'center', 'borderBottom': f'1px solid {COLORS["border"]}'}))
         
