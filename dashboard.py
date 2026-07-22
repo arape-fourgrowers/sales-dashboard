@@ -763,8 +763,17 @@ def calculate_client_metrics(farm_name):
 def create_sparkline_graph(values, width=120, height=30, color='#2d6a4f'):
     """Create an inline SVG sparkline graph for trend visualization"""
     import plotly.graph_objects as go
+    import numpy as np
     
-    if not values or len(values) == 0:
+    # Handle empty or None values
+    if values is None or (hasattr(values, '__len__') and len(values) == 0):
+        return None
+    
+    # Convert to list if numpy array
+    if isinstance(values, np.ndarray):
+        values = values.tolist()
+    
+    if not values:
         return None
     
     # Create a mini plotly figure
