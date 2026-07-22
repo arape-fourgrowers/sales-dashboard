@@ -986,19 +986,8 @@ def create_client_scorecard_tab(selected_farms):
         else:
             cells.append(html.Td('⚪ TBD', style={'padding': '16px', 'textAlign': 'center', 'borderBottom': f'1px solid {COLORS["border"]}'}))
         
-        # Recall (Full Row) - show as range with goal, using red/yellow coloring
-        recall_full_goal = goal_set.get('recall_full_row')
-        if recall_full_goal:
-            # For display, just show the goal since we don't have full row recall in data
-            cells.append(html.Td(
-                html.Div([
-                    html.Span('🔴 ', style={'fontSize': '16px', 'marginRight': '8px'}),
-                    html.Span(f'{recall_full_goal:.0%}', style={'fontWeight': '500'})
-                ]),
-                style={'padding': '16px', 'textAlign': 'center', 'borderBottom': f'1px solid {COLORS["border"]}'}
-            ))
-        else:
-            cells.append(html.Td('⚪ TBD', style={'padding': '16px', 'textAlign': 'center', 'borderBottom': f'1px solid {COLORS["border"]}'}))
+        # Recall (Full Row) - TBD (no data source)
+        cells.append(html.Td('⚪ TBD', style={'padding': '16px', 'textAlign': 'center', 'borderBottom': f'1px solid {COLORS["border"]}'}))
         
         # Precision (Metrics Test)
         precision_m = metrics.get('precision_metrics')
@@ -1022,19 +1011,8 @@ def create_client_scorecard_tab(selected_farms):
         else:
             cells.append(html.Td('⚪ TBD', style={'padding': '16px', 'textAlign': 'center', 'borderBottom': f'1px solid {COLORS["border"]}'}))
         
-        # Precision (Full Row) - show as range
-        precision_full_min = goal_set.get('precision_full_row_min')
-        precision_full_max = goal_set.get('precision_full_row_max')
-        if precision_full_min and precision_full_max:
-            cells.append(html.Td(
-                html.Div([
-                    html.Span('🔴 ', style={'fontSize': '16px', 'marginRight': '8px'}),
-                    html.Span(f'{precision_full_min:.0%}–{precision_full_max:.0%}', style={'fontWeight': '500'})
-                ]),
-                style={'padding': '16px', 'textAlign': 'center', 'borderBottom': f'1px solid {COLORS["border"]}'}
-            ))
-        else:
-            cells.append(html.Td('⚪ TBD', style={'padding': '16px', 'textAlign': 'center', 'borderBottom': f'1px solid {COLORS["border"]}'}))
+        # Precision (Full Row) - TBD (no data source)
+        cells.append(html.Td('⚪ TBD', style={'padding': '16px', 'textAlign': 'center', 'borderBottom': f'1px solid {COLORS["border"]}'}))
         
         # Reliability
         reliability = metrics.get('reliability')
